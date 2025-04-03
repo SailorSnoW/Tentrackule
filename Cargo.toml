@@ -1,0 +1,25 @@
+[package]
+name = "Tentrackule"
+version = "0.1.0"
+authors = ["Loïs Lagoutte <lois@snowcorp.fr>"]
+edition = "2024"
+readme = "README.md"
+
+# CHANGEME
+repository = "https://github.com/dpc/rust-bin-template"
+license = "Apache-2.0"
+
+# See more keys and thair definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+dotenv = "0.15"
+log = "0.4"
+thiserror = "2"
+env_logger = "0.11"
+poise = "0.6.1"
+governor = "0.10"
+nonzero_ext = "0.3"
+rusqlite = { version = "0.34.0", features = ["bundled"] }
+tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
+serde = { version = "1", features = ["derive"] }
+reqwest = { version = "0.12", features = ["json"] }
