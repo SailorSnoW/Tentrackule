@@ -2,7 +2,7 @@
 name = "Tentrackule"
 version = "0.1.0"
 authors = ["Loïs Lagoutte <lois@snowcorp.fr>"]
-edition = "2024"
+edition = "2021"
 readme = "README.md"
 
 # CHANGEME
