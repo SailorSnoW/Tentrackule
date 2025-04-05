@@ -1,8 +1,8 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, env};
 
 use log::{debug, info};
 use poise::serenity_prelude::{ChannelId, GuildId};
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::{mpsc, oneshot};
 use types::Account;
 
@@ -24,10 +24,10 @@ impl DatabaseHandler {
         let (tx, rx) = mpsc::channel(100);
 
         debug!("📜 Openning database connection...");
-        let connection = Connection::open("database.db3").expect("Database open successfuly.");
-        connection
-            .pragma_update(None, "journal_mode", "WAL")
-            .unwrap();
+        let path = env::var("DB_PATH").unwrap_or("./".to_string());
+
+        let connection =
+            Connection::open(format!("{}/database.db3", path)).expect("Database open successfuly.");
 
         Self {
             connection,
