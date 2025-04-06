@@ -13,6 +13,7 @@ pub use alert_sender::{AlertSenderMessage, AlertSenderTx};
 
 mod alert_sender;
 mod commands;
+mod embeds;
 mod handler;
 
 // Types used by all command functions

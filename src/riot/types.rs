@@ -5,6 +5,21 @@ use serde::Deserialize;
 /// status code for the request.
 pub type RiotApiResponse<T> = Result<T, reqwest::StatusCode>;
 
+#[derive(Debug, Clone)]
+pub struct MatchDtoWithLeagueInfo {
+    pub match_data: MatchDto,
+    pub league_data: Option<LeagueEntryDto>,
+}
+
+impl MatchDtoWithLeagueInfo {
+    pub fn new(match_data: MatchDto, league_data: Option<LeagueEntryDto>) -> Self {
+        Self {
+            match_data,
+            league_data,
+        }
+    }
+}
+
 /// Representation of the match data response.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -13,7 +28,11 @@ pub struct MatchDto {
 }
 
 impl MatchDto {
-    pub fn get_participant_info_of(&self, puuid: String) -> Option<&ParticipantDto> {
+    pub fn queue_type(&self) -> QueueType {
+        self.info.queue_id.into()
+    }
+
+    pub fn participant_info_of(&self, puuid: &str) -> Option<&ParticipantDto> {
         self.info.participants.iter().find(|p| p.puuid == puuid)
     }
 
@@ -29,6 +48,7 @@ impl MatchDto {
 #[serde(rename_all = "camelCase")]
 pub struct InfoDto {
     pub participants: Vec<ParticipantDto>,
+    pub queue_id: u16,
     pub game_duration: u64,
     pub game_creation: u64,
 }
@@ -203,6 +223,21 @@ impl TryFrom<String> for Region {
             "OCE" => Ok(Region::Oce),
             "TW" => Ok(Region::Tw),
             _ => Err(format!("Unknown region: {}", value)),
+        }
+    }
+}
+
+pub enum QueueType {
+    /// Ranked Solo/Duo
+    SoloDuo,
+    Unhandled,
+}
+
+impl From<u16> for QueueType {
+    fn from(value: u16) -> Self {
+        match value {
+            420 => Self::SoloDuo,
+            _ => Self::Unhandled,
         }
     }
 }

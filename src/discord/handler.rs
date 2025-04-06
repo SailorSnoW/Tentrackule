@@ -29,7 +29,7 @@ pub async fn event_handler(
             ctx.clone(),
             framework.user_data().await.db_sender.clone(),
         )
-        .spawn();
+        .start();
         // We spawn the result poller when the bot is ready to operate.
         ResultPoller::new(
             framework.user_data().await.api_sender.clone(),

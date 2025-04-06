@@ -1,9 +1,9 @@
 use std::fmt::Debug;
 
 use governor::{
-    Quota, RateLimiter,
     clock::DefaultClock,
     state::{InMemoryState, NotKeyed},
+    Quota, RateLimiter,
 };
 use nonzero_ext::nonzero;
 use reqwest::StatusCode;
@@ -64,7 +64,7 @@ impl RiotClient {
             region
         );
 
-        let params = "?type=ranked&start=0&count=1";
+        let params = "?start=0&count=1";
         let path = format!(
             "https://{}/lol/match/v5/matches/by-puuid/{}/ids/{}",
             region.to_global_endpoint(),

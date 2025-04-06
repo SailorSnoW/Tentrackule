@@ -1,10 +1,11 @@
 use super::{
-    ApiRequest,
     types::{LeagueEntryDto, MatchDto, Region},
+    ApiRequest,
 };
 use crate::{
-    db::{DbRequest, types::Account},
+    db::{types::Account, DbRequest},
     discord::{AlertSenderMessage, AlertSenderTx},
+    riot::types::{MatchDtoWithLeagueInfo, QueueType},
 };
 use log::{debug, info};
 use poise::serenity_prelude::Timestamp;
@@ -106,19 +107,32 @@ impl ResultPoller {
             return;
         }
 
-        // And the new league data
-        let league = self
-            .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
-            .await;
+        match match_data.queue_type() {
+            QueueType::SoloDuo => {
+                // Get the new league data
+                let league = self
+                    .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
+                    .await;
 
-        let _ = self
-            .bot_sender
-            .send(AlertSenderMessage::AlertNewMatchResult {
-                puuid: account.puuid,
-                match_data,
-                league_data: league,
-            })
-            .await;
+                debug!(
+                    "🏅 Dispatch new alert for: {}#{}",
+                    account.game_name, account.tag_line
+                );
+                let _ = self
+                    .bot_sender
+                    .send(AlertSenderMessage::DispatchNewAlert {
+                        puuid: account.puuid,
+                        match_data: MatchDtoWithLeagueInfo::new(match_data, league),
+                    })
+                    .await;
+            }
+            QueueType::Unhandled => {
+                debug!(
+                    "🏅 {}#{}: Unsupported queue type, ignoring.",
+                    account.game_name, account.tag_line
+                );
+            }
+        }
     }
 
     async fn get_new_match_id(&self, puuid: String, region: Region) -> String {
