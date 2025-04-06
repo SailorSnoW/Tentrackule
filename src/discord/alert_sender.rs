@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use log::error;
 use log::info;
@@ -15,7 +16,7 @@ pub type AlertSenderRx = mpsc::Receiver<AlertSenderMessage>;
 pub type AlertSenderTx = mpsc::Sender<AlertSenderMessage>;
 
 pub struct AlertSender {
-    ctx: serenity::Context,
+    ctx: Arc<serenity::Http>,
     receiver: AlertSenderRx,
     db_sender: mpsc::Sender<DbRequest>,
 }
@@ -23,7 +24,7 @@ pub struct AlertSender {
 impl AlertSender {
     pub fn new(
         receiver: AlertSenderRx,
-        ctx: serenity::Context,
+        ctx: Arc<serenity::Http>,
         db_sender: mpsc::Sender<DbRequest>,
     ) -> Self {
         Self {

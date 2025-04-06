@@ -34,7 +34,7 @@ impl ResultPoller {
         }
     }
 
-    pub fn spawn(self) -> tokio::task::JoinHandle<()> {
+    pub fn start(self) -> tokio::task::JoinHandle<()> {
         tokio::spawn(async move {
             self.run().await;
         })

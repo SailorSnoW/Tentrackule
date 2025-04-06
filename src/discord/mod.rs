@@ -9,7 +9,7 @@ use handler::event_handler;
 
 use crate::{db::DbRequest, riot::ApiRequest};
 
-pub use alert_sender::{AlertSenderMessage, AlertSenderTx};
+pub use alert_sender::{AlertSender, AlertSenderMessage, AlertSenderTx};
 
 mod alert_sender;
 mod commands;
@@ -22,11 +22,14 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 pub struct DiscordBot {
-    client: ClientBuilder,
+    pub client: Client,
 }
 
 impl DiscordBot {
-    pub fn new(db_sender: mpsc::Sender<DbRequest>, api_sender: mpsc::Sender<ApiRequest>) -> Self {
+    pub async fn new(
+        db_sender: mpsc::Sender<DbRequest>,
+        api_sender: mpsc::Sender<ApiRequest>,
+    ) -> Self {
         let token =
             env::var("DISCORD_BOT_TOKEN").expect("Expected a discord bot token in the environment");
         let intents = GatewayIntents::non_privileged();
@@ -53,7 +56,13 @@ impl DiscordBot {
                 })
             })
             .build();
-        let client = ClientBuilder::new(token, intents).framework(framework);
+        let client_builder = ClientBuilder::new(token, intents).framework(framework);
+
+        info!("🤖 Initializing Discord Bot...");
+        let client = client_builder
+            .await
+            .expect("Discord client creation should success.");
+
         Self { client }
     }
 
@@ -63,13 +72,11 @@ impl DiscordBot {
         })
     }
 
-    async fn run(self) {
-        info!("🤖 Initializing Discord Bot...");
-        let mut client_ready = self.client.await.expect("Discord client creation success.");
-
+    async fn run(mut self) {
         info!("🤖 Starting Discord Bot...");
-        if let Err(why) = client_ready.start().await {
+        if let Err(why) = self.client.start().await {
             error!("🔴 Bot Connection failed with error: {why:?}");
+            panic!()
         }
     }
 }
