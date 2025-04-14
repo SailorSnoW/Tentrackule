@@ -29,6 +29,7 @@
             [
               (rust-bin.fromRustupToolchainFile ./rust-toolchain.toml)
               clang
+              pkg-config
               openssl
 
               # Extra
