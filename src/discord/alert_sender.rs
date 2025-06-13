@@ -92,7 +92,7 @@ impl AlertSender {
                         "✉️ No alert channel set for guild {}, ignoring dispatch.",
                         guild.0
                     );
-                    break;
+                    continue;
                 }
             }
         }
