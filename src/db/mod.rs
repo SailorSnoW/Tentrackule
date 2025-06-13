@@ -1,14 +1,17 @@
 use std::{collections::HashMap, env};
 
 use log::{debug, info};
+use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::{mpsc, oneshot};
 use types::Account;
 
-use crate::riot::types::{AccountDto, Region};
+use crate::riot::types::{AccountDto, LeaguePoints, Region};
 
 pub mod types;
+
+mod migrations;
 
 pub type DatabaseTx = mpsc::Sender<DbRequest>;
 pub type DatabaseRx = mpsc::Receiver<DbRequest>;
@@ -94,6 +97,17 @@ impl DatabaseHandler {
                 } => {
                     let _ = respond_to.send(set_last_match_id(&self.connection, puuid, match_id));
                 }
+                DbRequest::SetNewLolSoloDuoLps {
+                    puuid,
+                    league_points,
+                    respond_to,
+                } => {
+                    let _ = respond_to.send(set_new_lol_solo_duo_lps(
+                        &self.connection,
+                        puuid,
+                        league_points,
+                    ));
+                }
                 DbRequest::GetGuildsForAccount { puuid, respond_to } => {
                     let _ = respond_to.send(get_guilds_for_puuid(&self.connection, puuid));
                 }
@@ -105,7 +119,6 @@ impl DatabaseHandler {
     fn init_db(&self) {
         info!("📜 Initializing Database...");
 
-        debug!("📜 Creating missing tables...");
         // Create tables only if they not exists
         self.connection
             .execute(
@@ -141,6 +154,10 @@ impl DatabaseHandler {
             )
             .unwrap();
 
+        // Run Migrations
+        debug!("📜 Running migrations...");
+        migrations::V1::do_migration(&self.connection);
+
         info!("📜 Database initialized.");
     }
 }
@@ -166,6 +183,11 @@ pub enum DbRequest {
     SetLastMatchId {
         puuid: String,
         match_id: String,
+        respond_to: oneshot::Sender<rusqlite::Result<()>>,
+    },
+    SetNewLolSoloDuoLps {
+        puuid: String,
+        league_points: LeaguePoints,
         respond_to: oneshot::Sender<rusqlite::Result<()>>,
     },
     GetGuildsForAccount {
@@ -245,9 +267,22 @@ fn set_last_match_id(conn: &Connection, puuid: String, match_id: String) -> rusq
     .map(|_| ())
 }
 
+fn set_new_lol_solo_duo_lps(
+    conn: &Connection,
+    puuid: String,
+    league_points: LeaguePoints,
+) -> rusqlite::Result<()> {
+    conn.execute(
+        "UPDATE accounts SET lol_solo_duo_lps = ?1 WHERE puuid = ?2",
+        params![league_points, puuid],
+    )
+    .map(|_| ())
+}
+
 fn get_all_accounts(conn: &Connection) -> rusqlite::Result<Vec<Account>> {
-    let mut stmt =
-        conn.prepare("SELECT puuid, game_name, tag_line, region, last_match_id FROM accounts")?;
+    let mut stmt = conn.prepare(
+        "SELECT puuid, game_name, tag_line, region, last_match_id, lol_solo_duo_lps FROM accounts",
+    )?;
 
     let rows = stmt.query_map([], |row| {
         Ok(Account {
@@ -259,6 +294,7 @@ fn get_all_accounts(conn: &Connection) -> rusqlite::Result<Vec<Account>> {
                 str.try_into().unwrap()
             },
             last_match_id: row.get(4)?,
+            cached_lol_solo_duo_lps: row.get(5)?,
         })
     })?;
 
@@ -268,7 +304,7 @@ fn get_guild_accounts(conn: &Connection, guild_id: GuildId) -> rusqlite::Result<
     let guild_id_str = guild_id.to_string(); // Conversion u64 -> String
 
     let mut stmt = conn.prepare(
-        "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id 
+        "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id, a.lol_solo_duo_lps
         FROM accounts a
         INNER JOIN account_guilds ag ON a.puuid = ag.puuid
         WHERE ag.guild_id = ?",
@@ -284,6 +320,7 @@ fn get_guild_accounts(conn: &Connection, guild_id: GuildId) -> rusqlite::Result<
                 str.try_into().unwrap()
             },
             last_match_id: row.get(4)?,
+            cached_lol_solo_duo_lps: row.get(5)?,
         })
     })?;
 

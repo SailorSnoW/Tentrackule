@@ -1,3 +1,4 @@
+use log::warn;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
 
@@ -9,14 +10,36 @@ pub type RiotApiResponse<T> = Result<T, reqwest::StatusCode>;
 pub struct MatchDtoWithLeagueInfo {
     pub match_data: MatchDto,
     pub league_data: Option<LeagueEntryDto>,
+    pub cached_league_points: Option<LeaguePoints>,
 }
 
 impl MatchDtoWithLeagueInfo {
-    pub fn new(match_data: MatchDto, league_data: Option<LeagueEntryDto>) -> Self {
+    pub fn new(
+        match_data: MatchDto,
+        league_data: Option<LeagueEntryDto>,
+        cached_league_points: Option<LeaguePoints>,
+    ) -> Self {
         Self {
             match_data,
             league_data,
+            cached_league_points,
         }
+    }
+
+    /// Calculate the gain/loss of LP between the cached value and the new match data.
+    /// Returns a positive number for LP gain, negative for LP loss, or None if data is missing.
+    pub fn calculate_league_points_difference(&self) -> Option<i16> {
+        let Some(league_data) = &self.league_data else {
+            warn!("No league data found, ignoring LPs win/loss calculation.");
+            return None;
+        };
+
+        let Some(cached) = self.cached_league_points else {
+            warn!("No cached league points found, ignoring LPs win/loss calculation.");
+            return None;
+        };
+
+        Some((league_data.league_points as i16) - (cached as i16))
     }
 }
 
@@ -88,11 +111,17 @@ impl ParticipantDto {
             self.riot_id_game_name, self.riot_id_tagline
         )
     }
-    pub fn to_title_win_string(&self) -> String {
-        match self.win {
+    pub fn to_title_win_string(&self, lp_info: Option<i16>) -> String {
+        let lp_info_str = match lp_info {
+            Some(p) => format!(" ({} LPs)", p),
+            None => "".to_string(),
+        };
+        let result_str = match self.win {
             true => "Victory".to_string(),
             false => "Defeat".to_string(),
-        }
+        };
+
+        format!("{}{}", result_str, lp_info_str)
     }
     pub fn to_formatted_win_string(&self) -> String {
         match self.win {
@@ -118,6 +147,8 @@ pub struct AccountDto {
     pub tag_line: Option<String>,
 }
 
+pub type LeaguePoints = u16;
+
 /// Representation of the league entry response.
 #[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -125,7 +156,7 @@ pub struct LeagueEntryDto {
     pub queue_type: String,
     pub tier: String,
     pub rank: String,
-    pub league_points: u16,
+    pub league_points: LeaguePoints,
 }
 
 impl LeagueEntryDto {

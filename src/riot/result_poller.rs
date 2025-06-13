@@ -1,5 +1,5 @@
 use super::{
-    types::{LeagueEntryDto, MatchDto, Region},
+    types::{LeagueEntryDto, LeaguePoints, MatchDto, Region},
     ApiRequest,
 };
 use crate::{
@@ -7,7 +7,7 @@ use crate::{
     discord::{AlertSenderMessage, AlertSenderTx},
     riot::types::{MatchDtoWithLeagueInfo, QueueType},
 };
-use log::{debug, info};
+use log::{debug, info, warn};
 use poise::serenity_prelude::Timestamp;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -109,10 +109,24 @@ impl ResultPoller {
 
         match match_data.queue_type() {
             QueueType::SoloDuo => {
+                // Get the cached league points data
+                let cached_league_points = account.cached_lol_solo_duo_lps;
                 // Get the new league data
                 let league = self
                     .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
                     .await;
+
+                match &league {
+                    Some(x) => {
+                        debug!(
+                            "Caching new fetched league points ({}) for {}#{}.",
+                            x.league_points, account.game_name, account.tag_line
+                        );
+                        self.set_new_lol_solo_duo_lps(account.puuid.clone(), x.league_points)
+                            .await
+                    }
+                    None => warn!("Something went wrong and no league data was fetched !"),
+                }
 
                 debug!(
                     "🏅 Dispatch new alert for: {}#{}",
@@ -122,7 +136,11 @@ impl ResultPoller {
                     .bot_sender
                     .send(AlertSenderMessage::DispatchNewAlert {
                         puuid: account.puuid,
-                        match_data: MatchDtoWithLeagueInfo::new(match_data, league),
+                        match_data: MatchDtoWithLeagueInfo::new(
+                            match_data,
+                            league,
+                            cached_league_points,
+                        ),
                     })
                     .await;
             }
@@ -154,6 +172,19 @@ impl ResultPoller {
             .send(DbRequest::SetLastMatchId {
                 puuid,
                 match_id,
+                respond_to: tx,
+            })
+            .await
+            .unwrap();
+        let _ = rx.await;
+    }
+
+    async fn set_new_lol_solo_duo_lps(&self, puuid: String, league_points: LeaguePoints) {
+        let (tx, rx) = oneshot::channel();
+        self.db_sender
+            .send(DbRequest::SetNewLolSoloDuoLps {
+                puuid,
+                league_points,
                 respond_to: tx,
             })
             .await

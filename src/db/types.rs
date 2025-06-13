@@ -1,4 +1,4 @@
-use crate::riot::types::Region;
+use crate::riot::types::{LeaguePoints, Region};
 
 #[derive(Debug, Clone)]
 pub struct Account {
@@ -7,4 +7,5 @@ pub struct Account {
     pub tag_line: String,
     pub region: Region,
     pub last_match_id: String,
+    pub cached_lol_solo_duo_lps: Option<LeaguePoints>,
 }
