@@ -9,7 +9,7 @@ use nonzero_ext::nonzero;
 use reqwest::StatusCode;
 use serde::de::DeserializeOwned;
 
-use super::types::{AccountDto, LeagueEntryDto, MatchDto, Region, RiotApiResponse};
+use super::types::{AccountDto, LeagueEntryDto, MatchDto, Region, RiotApiError, RiotApiResponse};
 
 pub struct RiotClient {
     pub client: reqwest::Client,
@@ -116,16 +116,16 @@ async fn request<T: DeserializeOwned + Debug>(
     client: reqwest::Client,
     key: String,
     path: String,
-) -> Result<T, reqwest::StatusCode> {
+) -> Result<T, RiotApiError> {
     let res = client
         .get(path)
         .header("X-Riot-Token", key)
         .send()
         .await
-        .unwrap();
+        .map_err(RiotApiError::Reqwest)?;
     match res.status() {
-        StatusCode::OK => Ok(res.json().await.unwrap()),
-        _ => Err(res.status()),
+        StatusCode::OK => res.json().await.map_err(RiotApiError::Reqwest),
+        _ => Err(RiotApiError::Status(res.status())),
     }
 }
 
@@ -191,5 +191,14 @@ mod tests {
         let leagues = client.get_leagues(puuid, Region::Euw).await.unwrap();
 
         println!("Leagues data fetched: {:?}", leagues);
+    }
+
+    #[tokio::test]
+    async fn request_propagates_reqwest_error() {
+        let client = reqwest::Client::new();
+        let res: super::RiotApiResponse<()> =
+            super::request(client, String::new(), "invalid-url".into()).await;
+
+        assert!(matches!(res, Err(super::RiotApiError::Reqwest(_))));
     }
 }

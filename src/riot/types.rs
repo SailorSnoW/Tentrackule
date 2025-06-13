@@ -1,10 +1,18 @@
 use log::warn;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
+use thiserror::Error;
 
-/// A call to Riot API can either result in a success with the success type or fail with a
-/// status code for the request.
-pub type RiotApiResponse<T> = Result<T, reqwest::StatusCode>;
+#[derive(Debug, Error)]
+pub enum RiotApiError {
+    #[error("Reqwest error: {0}")]
+    Reqwest(#[from] reqwest::Error),
+
+    #[error("HTTP status error: {0}")]
+    Status(reqwest::StatusCode),
+}
+/// A call to Riot API can either result in a success with the success type or fail with a [`RiotApiError`].
+pub type RiotApiResponse<T> = Result<T, RiotApiError>;
 
 #[derive(Debug, Clone)]
 pub struct MatchDtoWithLeagueInfo {

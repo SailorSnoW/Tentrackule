@@ -5,7 +5,10 @@ use tokio::sync::oneshot;
 
 use crate::{
     db::DbRequest,
-    riot::{types::Region, ApiRequest},
+    riot::{
+        types::{Region, RiotApiError},
+        ApiRequest,
+    },
 };
 
 use super::{serenity, Context, Error};
@@ -40,12 +43,16 @@ pub async fn track(
             debug!("🤖 Got following account informations: {:?}", account_data);
             account_data
         }
-        Err(code) => {
-            log::error!("🤖 Received bad response code: {}", code);
+        Err(err) => {
+            log::error!("🤖 Riot API error while getting account: {:?}", err);
 
-            match code {
-                StatusCode::NOT_FOUND => ctx.say("❌ Player not found on Riot servers. Please try with another summoner name/tag.").await?,
-                _ => ctx.say("❌ Something went wrong during summoner API request.").await?
+            match err {
+                RiotApiError::Status(StatusCode::NOT_FOUND) => ctx
+                    .say("❌ Player not found on Riot servers. Please try with another summoner name/tag.")
+                    .await?,
+                _ => ctx
+                    .say("❌ Something went wrong during summoner API request.")
+                    .await?,
             };
 
             return Ok(());
@@ -87,11 +94,20 @@ pub async fn track(
 pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {
     enter_command_log("show_tracked");
 
+    let guild_id = match ctx.guild_id() {
+        Some(id) => id,
+        None => {
+            ctx.say("❌ This command can only be used inside a guild.")
+                .await?;
+            return Ok(());
+        }
+    };
+
     let (tx, rx) = oneshot::channel();
     ctx.data()
         .db_sender
         .send(DbRequest::GetAllAccountsForGuild {
-            guild_id: ctx.guild_id().unwrap(),
+            guild_id,
             respond_to: tx,
         })
         .await?;
@@ -130,16 +146,31 @@ pub async fn set_alert_channel(
         return Ok(());
     }
 
+    let guild_id = match ctx.guild_id() {
+        Some(id) => id,
+        None => {
+            ctx.say("❌ this command can only be used inside a guild.")
+                .await?;
+            return Ok(());
+        }
+    };
+
     let (tx, rx) = oneshot::channel();
     ctx.data()
         .db_sender
         .send(DbRequest::SetAlertChannel {
-            guild_id: ctx.guild_id().unwrap(),
+            guild_id,
             channel_id: channel.id,
             respond_to: tx,
         })
         .await?;
-    rx.await?.unwrap();
+
+    if let Err(e) = rx.await? {
+        log::error!("🤖 Database error on setting alert channel: {}", e);
+        ctx.say("❌ Internal Error: Couldn't update alert channel.")
+            .await?;
+        return Ok(());
+    }
 
     let response = format!(
         "🎉 Successfully set alerts diffusion to channel {}",
@@ -154,11 +185,20 @@ pub async fn set_alert_channel(
 pub async fn current_alert_channel(ctx: Context<'_>) -> Result<(), Error> {
     enter_command_log("current_alert_channel");
 
+    let guild_id = match ctx.guild_id() {
+        Some(id) => id,
+        None => {
+            ctx.say("❌ This command can only be used inside a guild.")
+                .await?;
+            return Ok(());
+        }
+    };
+
     let (tx, rx) = oneshot::channel();
     ctx.data()
         .db_sender
         .send(DbRequest::GetAlertChannel {
-            guild_id: ctx.guild_id().unwrap(),
+            guild_id,
             respond_to: tx,
         })
         .await?;
