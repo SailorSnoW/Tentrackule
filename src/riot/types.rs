@@ -125,7 +125,7 @@ pub struct LeagueEntryDto {
     pub queue_type: String,
     pub tier: String,
     pub rank: String,
-    pub league_points: u8,
+    pub league_points: u16,
 }
 
 impl LeagueEntryDto {

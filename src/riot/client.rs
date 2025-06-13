@@ -151,7 +151,7 @@ mod tests {
 
         assert_eq!(
             account.puuid,
-            "5HokEg55dIIsVwRIHq57MwrYPbIXbTR2pSdGElZgTPIZ0NYsZJ0Yzwb8MAHr5amEkDP6mkDrpp1e8A"
+            "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
         );
         assert_eq!(account.game_name, Some("Chalop".to_string()));
         assert_eq!(account.tag_line, Some("3012".to_string()))
@@ -161,7 +161,7 @@ mod tests {
     async fn get_last_match_id_works() {
         let client = RiotClient::new(api_key());
         let puuid =
-            "5HokEg55dIIsVwRIHq57MwrYPbIXbTR2pSdGElZgTPIZ0NYsZJ0Yzwb8MAHr5amEkDP6mkDrpp1e8A"
+            "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
                 .to_string();
 
         let match_id = client.get_last_match_id(puuid, Region::Euw).await.unwrap();
@@ -185,7 +185,7 @@ mod tests {
     async fn get_league() {
         let client = RiotClient::new(api_key());
         let puuid =
-            "5HokEg55dIIsVwRIHq57MwrYPbIXbTR2pSdGElZgTPIZ0NYsZJ0Yzwb8MAHr5amEkDP6mkDrpp1e8A"
+            "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
                 .to_string();
 
         let leagues = client.get_leagues(puuid, Region::Euw).await.unwrap();
