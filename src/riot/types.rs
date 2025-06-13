@@ -272,3 +272,53 @@ impl From<u16> for QueueType {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn dummy_match() -> MatchDto {
+        MatchDto {
+            info: InfoDto {
+                participants: vec![],
+                queue_id: 420,
+                game_duration: 0,
+                game_creation: 0,
+            },
+        }
+    }
+
+    fn dummy_league_entry(lp: LeaguePoints) -> LeagueEntryDto {
+        LeagueEntryDto {
+            queue_type: "RANKED_SOLO_5x5".to_string(),
+            tier: "GOLD".to_string(),
+            rank: "IV".to_string(),
+            league_points: lp,
+        }
+    }
+
+    #[test]
+    fn league_difference_is_calculated() {
+        let match_data = dummy_match();
+        let league_data = Some(dummy_league_entry(100));
+
+        let match_with_info = MatchDtoWithLeagueInfo::new(match_data, league_data, Some(90));
+
+        assert_eq!(
+            match_with_info.calculate_league_points_difference(),
+            Some(10)
+        );
+    }
+
+    #[test]
+    fn returns_none_when_data_missing() {
+        let match_data = dummy_match();
+
+        let with_no_league = MatchDtoWithLeagueInfo::new(match_data.clone(), None, Some(90));
+        assert_eq!(with_no_league.calculate_league_points_difference(), None);
+
+        let with_no_cached =
+            MatchDtoWithLeagueInfo::new(match_data, Some(dummy_league_entry(100)), None);
+        assert_eq!(with_no_cached.calculate_league_points_difference(), None);
+    }
+}
