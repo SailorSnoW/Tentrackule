@@ -65,7 +65,7 @@ fn create_solo_duo_alert_msg(
     focused_participant: &ParticipantDto,
     match_data: &MatchDtoWithLeagueInfo,
 ) -> anyhow::Result<CreateEmbed> {
-    let author = CreateEmbedAuthor::new("Solo/Duo Queue")
+    let author = CreateEmbedAuthor::new("[LoL] Solo/Duo Queue")
         .icon_url(focused_participant.to_profile_icon_picture_url());
     let mut embed = create_base_embed(focused_participant, match_data, true)?
         .author(author)
