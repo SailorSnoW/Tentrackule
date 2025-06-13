@@ -31,7 +31,7 @@ The bot aims to be **efficient and optimized** in its use of the Riot API, minim
 2. Create a `.env` file at the root with:
    ```env
    DB_PATH=path_to_the_db_storage_writting
-   DISCORD_TOKEN=your_discord_bot_token
+   DISCORD_BOT_TOKEN=your_discord_bot_token
    RIOT_API_KEY=your_riot_api_key
    ```
 3. Compile and run the bot:

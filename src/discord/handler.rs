@@ -1,13 +1,9 @@
-use alert_sender::AlertSender;
-
-use crate::riot::result_poller::ResultPoller;
-
 use super::*;
 
 pub async fn event_handler(
     ctx: &serenity::Context,
     event: &serenity::FullEvent,
-    framework: poise::FrameworkContext<'_, Data, Error>,
+    _framework: poise::FrameworkContext<'_, Data, Error>,
 ) -> Result<(), Error> {
     if let serenity::FullEvent::Ready { data_about_bot, .. } = event {
         info!(

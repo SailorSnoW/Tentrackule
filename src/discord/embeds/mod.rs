@@ -11,7 +11,7 @@ pub enum EmbedCreationError {
 
 impl MatchDtoWithLeagueInfo {
     pub fn into_embed(self, focused_puuid: &str) -> anyhow::Result<CreateEmbed> {
-        let focused_participant = self.match_data.participant_info_of(&focused_puuid).ok_or(
+        let focused_participant = self.match_data.participant_info_of(focused_puuid).ok_or(
             EmbedCreationError::PuuidNotInMatch {
                 puuid: focused_puuid.to_string(),
             },
