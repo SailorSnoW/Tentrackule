@@ -26,11 +26,11 @@ impl DatabaseHandler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
 
-        debug!("📜 Openning database connection...");
+        debug!("📜 Opening database connection...");
         let path = env::var("DB_PATH").unwrap_or("./".to_string());
 
-        let connection =
-            Connection::open(format!("{}/database.db3", path)).expect("Database open successfuly.");
+        let connection = Connection::open(format!("{}/database.db3", path))
+            .expect("Database open successfully.");
 
         Self {
             connection,

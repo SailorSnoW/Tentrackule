@@ -5,10 +5,10 @@ use tokio::sync::oneshot;
 
 use crate::{
     db::DbRequest,
-    riot::{ApiRequest, types::Region},
+    riot::{types::Region, ApiRequest},
 };
 
-use super::{Context, Error, serenity};
+use super::{serenity, Context, Error};
 
 fn enter_command_log(command_name: &str) {
     info!("🤖 Executing command: {}", command_name)
@@ -75,7 +75,7 @@ pub async fn track(
     };
 
     ctx.say(format!(
-        "🎉 Successfuly started to track new summoner: **{}#{}**",
+        "🎉 Successfully started to track new summoner: **{}#{}**",
         game_name, tag
     ))
     .await?;
@@ -141,7 +141,10 @@ pub async fn set_alert_channel(
         .await?;
     rx.await?.unwrap();
 
-    let response = format!("🎉 Successfuly set alerts diffusion to channel {}", channel);
+    let response = format!(
+        "🎉 Successfully set alerts diffusion to channel {}",
+        channel
+    );
     ctx.say(response).await?;
     Ok(())
 }

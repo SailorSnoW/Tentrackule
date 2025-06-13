@@ -3,7 +3,7 @@ use rusqlite::Connection;
 
 use super::DbMigration;
 
-/// This migration add a lol_solo_duo_lps column to handle computing LPs loss/win between the new
+/// This migration adds a lol_solo_duo_lps column to handle computing LPs loss/win between the new
 /// match and the old one.
 pub struct V1;
 
