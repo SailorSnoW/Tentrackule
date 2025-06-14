@@ -1,7 +1,7 @@
-use log::{debug, info};
 use poise::serenity_prelude::ChannelType;
 use reqwest::StatusCode;
 use tokio::sync::oneshot;
+use tracing::{debug, info};
 
 use crate::{
     db::DbRequest,
@@ -44,7 +44,7 @@ pub async fn track(
             account_data
         }
         Err(err) => {
-            log::error!("🤖 Riot API error while getting account: {:?}", err);
+            tracing::error!("🤖 Riot API error while getting account: {:?}", err);
 
             match err {
                 RiotApiError::Status(StatusCode::NOT_FOUND) => ctx
@@ -72,7 +72,7 @@ pub async fn track(
         .await?;
 
     if let Err(e) = rx.await? {
-        log::error!(
+        tracing::error!(
             "🤖 Unexpected database error on registering new tracking: {}",
             e
         );
@@ -122,7 +122,7 @@ pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {
             s
         }
         Err(e) => {
-            log::error!("🤖 Error happened during database request: {}", e);
+            tracing::error!("🤖 Error happened during database request: {}", e);
             "❌ Internal Error: Couldn't retrieve tracked players for this server.".to_string()
         }
     };
@@ -166,7 +166,7 @@ pub async fn set_alert_channel(
         .await?;
 
     if let Err(e) = rx.await? {
-        log::error!("🤖 Database error on setting alert channel: {}", e);
+        tracing::error!("🤖 Database error on setting alert channel: {}", e);
         ctx.say("❌ Internal Error: Couldn't update alert channel.")
             .await?;
         return Ok(());

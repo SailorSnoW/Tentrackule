@@ -1,9 +1,9 @@
 use commands::{current_alert_channel, set_alert_channel, show_tracked, track};
-use log::{error, info};
 use poise::serenity_prelude as serenity;
 use serenity::*;
 use std::env;
 use tokio::sync::mpsc;
+use tracing::{error, info};
 
 use handler::event_handler;
 

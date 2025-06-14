@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use log::error;
-use log::info;
-use log::warn;
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
+use tracing::{error, info, warn};
 
 use crate::db::DbRequest;
 use crate::riot::types::MatchDtoWithLeagueInfo;

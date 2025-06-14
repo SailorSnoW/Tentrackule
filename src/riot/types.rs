@@ -1,7 +1,7 @@
-use log::warn;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
 use thiserror::Error;
+use tracing::warn;
 
 #[derive(Debug, Error)]
 pub enum RiotApiError {

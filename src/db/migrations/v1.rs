@@ -1,5 +1,5 @@
-use log::info;
 use rusqlite::Connection;
+use tracing::info;
 
 use super::DbMigration;
 

@@ -1,20 +1,18 @@
 use db::DatabaseHandler;
 use discord::{AlertSender, DiscordBot};
 use dotenv::dotenv;
-use log::info;
 use riot::{result_poller::ResultPoller, RiotApiHandler};
 use tokio::sync::mpsc;
+use tracing::info;
 
 mod db;
 mod discord;
+mod logging;
 mod riot;
 
 #[tokio::main]
 async fn main() {
-    env_logger::builder()
-        .format_timestamp(None)
-        .filter_module("Tentrackule", log::LevelFilter::Debug)
-        .init();
+    logging::init();
     dotenv().ok();
 
     info!("🐙 Starting...");

@@ -7,10 +7,10 @@ use crate::{
     discord::{AlertSenderMessage, AlertSenderTx},
     riot::types::{MatchDtoWithLeagueInfo, QueueType},
 };
-use log::{debug, error, info, warn};
 use poise::serenity_prelude::Timestamp;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, error, info, warn};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
 pub struct ResultPoller {

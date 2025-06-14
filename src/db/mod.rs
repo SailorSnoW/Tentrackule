@@ -1,10 +1,10 @@
 use std::{collections::HashMap, env};
 
-use log::{debug, info};
 use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::{mpsc, oneshot};
+use tracing::{debug, info};
 use types::Account;
 
 use crate::riot::types::{AccountDto, LeaguePoints, QueueType, Region};

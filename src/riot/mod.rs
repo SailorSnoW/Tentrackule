@@ -1,8 +1,8 @@
 use std::env;
 
 use client::RiotClient;
-use log::info;
 use tokio::sync::{mpsc, oneshot};
+use tracing::info;
 use types::{AccountDto, LeagueEntryDto, MatchDto, Region, RiotApiResponse};
 
 mod client;
