@@ -13,6 +13,21 @@ use crate::{
 
 use super::{serenity, Context, Error};
 
+/// Error message shown when a command is used outside of a guild context.
+const GUILD_ONLY_ERR: &str = "❌ This command can only be used inside a guild.";
+
+/// Return the [`GuildId`] of the context or notify the user if the command was
+/// run outside a guild.
+async fn require_guild(ctx: &Context<'_>) -> Option<serenity::GuildId> {
+    match ctx.guild_id() {
+        Some(id) => Some(id),
+        None => {
+            let _ = ctx.say(GUILD_ONLY_ERR).await;
+            None
+        }
+    }
+}
+
 fn enter_command_log(command_name: &str) {
     info!("🛠️ [CMD] /{} invoked", command_name)
 }
@@ -91,13 +106,8 @@ pub async fn track(
 pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {
     enter_command_log("show_tracked");
 
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            ctx.say("❌ This command can only be used inside a guild.")
-                .await?;
-            return Ok(());
-        }
+    let Some(guild_id) = require_guild(&ctx).await else {
+        return Ok(());
     };
 
     let (tx, rx) = oneshot::channel();
@@ -143,13 +153,8 @@ pub async fn set_alert_channel(
         return Ok(());
     }
 
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            ctx.say("❌ this command can only be used inside a guild.")
-                .await?;
-            return Ok(());
-        }
+    let Some(guild_id) = require_guild(&ctx).await else {
+        return Ok(());
     };
 
     let (tx, rx) = oneshot::channel();
@@ -182,13 +187,8 @@ pub async fn set_alert_channel(
 pub async fn current_alert_channel(ctx: Context<'_>) -> Result<(), Error> {
     enter_command_log("current_alert_channel");
 
-    let guild_id = match ctx.guild_id() {
-        Some(id) => id,
-        None => {
-            ctx.say("❌ This command can only be used inside a guild.")
-                .await?;
-            return Ok(());
-        }
+    let Some(guild_id) = require_guild(&ctx).await else {
+        return Ok(());
     };
 
     let (tx, rx) = oneshot::channel();
