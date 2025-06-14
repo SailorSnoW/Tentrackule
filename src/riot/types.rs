@@ -277,12 +277,15 @@ impl TryFrom<String> for Region {
 pub enum QueueType {
     /// Ranked Solo/Duo
     SoloDuo,
+    /// 5v5 Normal Draft Picks
+    NormalDraft,
     Unhandled,
 }
 
 impl From<u16> for QueueType {
     fn from(value: u16) -> Self {
         match value {
+            400 => Self::NormalDraft,
             420 => Self::SoloDuo,
             _ => Self::Unhandled,
         }
@@ -293,6 +296,7 @@ impl QueueType {
     pub fn as_str(&self) -> &'static str {
         match self {
             QueueType::SoloDuo => "RANKED_SOLO_5x5",
+            QueueType::NormalDraft => "", // No league queue type
             QueueType::Unhandled => "UNHANDLED",
         }
     }

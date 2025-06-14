@@ -168,6 +168,19 @@ impl ResultPoller {
                     })
                     .await;
             }
+            QueueType::NormalDraft => {
+                debug!(
+                    "📢 [POLL] dispatching alert for {}#{}",
+                    account.game_name, account.tag_line
+                );
+                let _ = self
+                    .bot_sender
+                    .send(AlertSenderMessage::DispatchNewAlert {
+                        puuid: account.puuid,
+                        match_data: MatchDtoWithLeagueInfo::new(match_data, None, None),
+                    })
+                    .await;
+            }
             QueueType::Unhandled => {
                 debug!(
                     "❌ [POLL] {}#{} unsupported queue type",

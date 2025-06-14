@@ -15,6 +15,7 @@ dependencies = [
  "reqwest 0.12.15",
  "rusqlite",
  "serde",
+ "serde_json",
  "thiserror 2.0.12",
  "tokio",
  "tracing",
