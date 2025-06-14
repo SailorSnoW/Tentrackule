@@ -14,7 +14,7 @@ use crate::{
 use super::{serenity, Context, Error};
 
 fn enter_command_log(command_name: &str) {
-    info!("🤖 Executing command: {}", command_name)
+    info!("🛠️ [CMD] /{} invoked", command_name)
 }
 
 /// Track a new player and start receiving alerts on new game results in your server.
@@ -27,7 +27,7 @@ pub async fn track(
 ) -> Result<(), Error> {
     enter_command_log("track");
 
-    debug!("🤖 Requesting Riot API for PUUID of: {}#{}", game_name, tag);
+    debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
     let (tx, rx) = oneshot::channel();
     ctx.data()
         .api_sender
@@ -40,11 +40,11 @@ pub async fn track(
 
     let account_data = match rx.await? {
         Ok(account_data) => {
-            debug!("🤖 Got following account informations: {:?}", account_data);
+            debug!("[CMD] PUUID lookup response: {:?}", account_data);
             account_data
         }
         Err(err) => {
-            tracing::error!("🤖 Riot API error while getting account: {:?}", err);
+            tracing::error!("[CMD] Riot API error while getting account: {:?}", err);
 
             match err {
                 RiotApiError::Status(StatusCode::NOT_FOUND) => ctx
@@ -59,7 +59,7 @@ pub async fn track(
         }
     };
 
-    debug!("🤖 Registering new tracked player informations in database.");
+    debug!("[CMD] storing tracking data in DB");
     let (tx, rx) = oneshot::channel();
     ctx.data()
         .db_sender
@@ -72,10 +72,7 @@ pub async fn track(
         .await?;
 
     if let Err(e) = rx.await? {
-        tracing::error!(
-            "🤖 Unexpected database error on registering new tracking: {}",
-            e
-        );
+        tracing::error!("[CMD] DB error while tracking player: {}", e);
         ctx.say("❌ Internal Error: Something went wrong during database operations.")
             .await?;
         return Ok(());
@@ -122,7 +119,7 @@ pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {
             s
         }
         Err(e) => {
-            tracing::error!("🤖 Error happened during database request: {}", e);
+            tracing::error!("[CMD] DB query error: {}", e);
             "❌ Internal Error: Couldn't retrieve tracked players for this server.".to_string()
         }
     };
@@ -166,7 +163,7 @@ pub async fn set_alert_channel(
         .await?;
 
     if let Err(e) = rx.await? {
-        tracing::error!("🤖 Database error on setting alert channel: {}", e);
+        tracing::error!("[CMD] DB error while setting alert channel: {}", e);
         ctx.say("❌ Internal Error: Couldn't update alert channel.")
             .await?;
         return Ok(());

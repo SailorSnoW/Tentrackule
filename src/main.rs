@@ -15,7 +15,7 @@ async fn main() {
     logging::init();
     dotenv().ok();
 
-    info!("🐙 Starting...");
+    info!("🚀 [MAIN] Tentrackule starting");
 
     let db = DatabaseHandler::new();
     let api = RiotApiHandler::new();

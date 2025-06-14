@@ -26,7 +26,7 @@ impl DatabaseHandler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
 
-        debug!("📜 Opening database connection...");
+        info!("💾 [DB] opening SQLite connection");
         let path = env::var("DB_PATH").unwrap_or("./".to_string());
 
         let connection = Connection::open(format!("{}/database.db3", path))
@@ -119,7 +119,7 @@ impl DatabaseHandler {
 
     /// Initialize the schemas of the database.
     fn init_db(&self) {
-        info!("📜 Initializing Database...");
+        info!("📐 [DB] initializing schema");
 
         // Create tables only if they not exists
         self.connection
@@ -157,11 +157,11 @@ impl DatabaseHandler {
             .unwrap();
 
         // Run Migrations
-        debug!("📜 Running migrations...");
+        debug!("⬆️ [DB] running migrations");
         migrations::V1::do_migration(&self.connection);
         migrations::V2::do_migration(&self.connection);
 
-        info!("📜 Database initialized.");
+        info!("✅ [DB] database ready");
     }
 }
 

@@ -8,7 +8,7 @@ pub struct V2;
 
 impl DbMigration for V2 {
     fn do_migration(conn: &Connection) {
-        info!("📦 Ensuring 'league_points' table exists...");
+        info!("🛠️ [MIGRATION] ensuring 'league_points' table exists");
         conn.execute(
             "CREATE TABLE IF NOT EXISTS league_points (
             puuid TEXT NOT NULL,

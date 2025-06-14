@@ -10,4 +10,6 @@ pub fn init() {
         .with_ansi(true)
         .with_level(true)
         .init();
+
+    tracing::info!("🔊 [LOG] logger initialized");
 }

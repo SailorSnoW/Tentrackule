@@ -39,7 +39,7 @@ impl AlertSender {
     }
 
     async fn run(&mut self) {
-        info!("✉️ Starting the Alert Sender...");
+        info!("📢 [ALERT] sender started");
 
         while let Some(request) = self.receiver.recv().await {
             match request {
@@ -54,10 +54,7 @@ impl AlertSender {
         let alert = match match_data.into_embed(puuid) {
             Ok(alert) => alert,
             Err(reason) => {
-                error!(
-                    "✉️ Alert message couldn't be created, cancelling dispatch.\n reason: {}",
-                    reason
-                );
+                error!("⚠️ [ALERT] failed to build alert: {}", reason);
                 return;
             }
         };
@@ -81,13 +78,13 @@ impl AlertSender {
                             let _ = msg.react(&self.ctx, '😱').await;
                         }
                         Err(e) => {
-                            error!("✉️ Something went wrong while sending alert message: {}", e)
+                            error!("❌ [ALERT] failed to send message: {}", e)
                         }
                     }
                 }
                 None => {
                     warn!(
-                        "✉️ No alert channel set for guild {}, ignoring dispatch.",
+                        "⚠️ [ALERT] guild {} has no alert channel, skipping",
                         guild.0
                     );
                     continue;

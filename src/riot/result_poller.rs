@@ -41,7 +41,7 @@ impl ResultPoller {
     }
 
     async fn run(&self) {
-        info!("🏅 Starting the Result Poller...");
+        info!("📡 [POLL] poller started");
 
         // Each time we will poll for new results.
         let mut interval = tokio::time::interval(Duration::from_secs(60));
@@ -49,7 +49,7 @@ impl ResultPoller {
         loop {
             interval.tick().await;
 
-            info!("🏅 New fetching session is starting.");
+            info!("🔄 [POLL] starting fetch cycle");
             // We fetch all registered accounts to get the results.
             let accounts = self.get_all_accounts().await;
             for account in accounts {
@@ -83,7 +83,7 @@ impl ResultPoller {
 
     async fn process_account(&self, account: Account) {
         debug!(
-            "🏅 Processing player: {}#{}",
+            "🔍 [POLL] checking {}#{}",
             account.game_name, account.tag_line
         );
         let Some(new_match_id) = self
@@ -96,7 +96,7 @@ impl ResultPoller {
         // If this is equal, no new game was ended for this account, we do nothing and just return.
         if new_match_id == account.last_match_id {
             debug!(
-                "🏅 {}#{}: No new result detected, ignoring.",
+                "⏭️ [POLL] {}#{} no new result",
                 account.game_name, account.tag_line
             );
             return;
@@ -104,7 +104,7 @@ impl ResultPoller {
 
         // Else we first register the new game ID in the database
         debug!(
-            "🏅 {}#{}: Caching new match ID {} in database.",
+            "💾 [POLL] {}#{} caching match {}",
             account.game_name, account.tag_line, new_match_id
         );
         self.set_new_match_id(account.puuid.clone(), new_match_id.clone())
@@ -121,7 +121,7 @@ impl ResultPoller {
         // This check ensure we do not alert on old match if any match was already cached in DB.
         if self.start_time > match_data.info.game_creation {
             debug!(
-                "🏅 {}#{}: New fetched game result is older than the startup time of this bot, ignoring.",
+                "🗑️ [POLL] {}#{} old match ignored",
                 account.game_name, account.tag_line
             );
             return;
@@ -139,7 +139,7 @@ impl ResultPoller {
                 match &league {
                     Some(x) => {
                         debug!(
-                            "Caching new fetched league points ({}) for {}#{}.",
+                            "⬆️ [POLL] updating league points to {} for {}#{}",
                             x.league_points, account.game_name, account.tag_line
                         );
                         self.update_league_points(
@@ -149,11 +149,11 @@ impl ResultPoller {
                         )
                         .await
                     }
-                    None => warn!("Something went wrong and no league data was fetched !"),
+                    None => warn!("⚠️ [POLL] league data missing"),
                 }
 
                 debug!(
-                    "🏅 Dispatch new alert for: {}#{}",
+                    "📢 [POLL] dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
                 let _ = self
@@ -170,7 +170,7 @@ impl ResultPoller {
             }
             QueueType::Unhandled => {
                 debug!(
-                    "🏅 {}#{}: Unsupported queue type, ignoring.",
+                    "❌ [POLL] {}#{} unsupported queue type",
                     account.game_name, account.tag_line
                 );
             }

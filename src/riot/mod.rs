@@ -42,7 +42,7 @@ impl RiotApiHandler {
     }
 
     async fn run(mut self) {
-        info!("📡 Starting Riot API Handler...");
+        info!("🛰️ [RIOT] API handler started");
 
         while let Some(request) = self.receiver.recv().await {
             // Ensure we do not enforce the RIOT API rate limits before doing any request

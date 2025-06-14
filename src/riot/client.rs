@@ -38,7 +38,7 @@ impl RiotClient {
         tag_line: String,
     ) -> RiotApiResponse<AccountDto> {
         tracing::trace!(
-            "📡 get_account_by_riot_id for gameName: {}, tagLine: {}",
+            "[RIOT::CLIENT] get_account_by_riot_id {}#{}",
             game_name,
             tag_line
         );
@@ -58,11 +58,7 @@ impl RiotClient {
         puuid: String,
         region: Region,
     ) -> RiotApiResponse<Option<String>> {
-        tracing::trace!(
-            "📡 get_last_match_id for puuid: {}, region: {:?}",
-            puuid,
-            region
-        );
+        tracing::trace!("[RIOT::CLIENT] get_last_match_id {} in {:?}", puuid, region);
 
         let params = "?start=0&count=1";
         let path = format!(
@@ -78,11 +74,7 @@ impl RiotClient {
     }
 
     pub async fn get_match(&self, match_id: String, region: Region) -> RiotApiResponse<MatchDto> {
-        tracing::trace!(
-            "📡 get_match for match_id: {}, region: {:?}",
-            match_id,
-            region
-        );
+        tracing::trace!("[RIOT::CLIENT] get_match {} in {:?}", match_id, region);
 
         let path = format!(
             "https://{}/lol/match/v5/matches/{}",
@@ -99,7 +91,7 @@ impl RiotClient {
         puuid: String,
         region: Region,
     ) -> RiotApiResponse<Vec<LeagueEntryDto>> {
-        tracing::trace!("📡 get_league for puuid: {}, region: {:?}", puuid, region);
+        tracing::trace!("[RIOT::CLIENT] get_league {} in {:?}", puuid, region);
 
         let path = format!(
             "https://{}/lol/league/v4/entries/by-puuid/{}",
