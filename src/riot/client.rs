@@ -142,6 +142,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "API Key required"]
     async fn get_account_by_riot_id_works() {
         let client = RiotClient::new(api_key());
         let account = client
@@ -158,6 +159,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "API Key required"]
     async fn get_last_match_id_works() {
         let client = RiotClient::new(api_key());
         let puuid =
@@ -172,6 +174,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "API Key required"]
     async fn get_match_works() {
         let client = RiotClient::new(api_key());
         let match_id = "EUW1_7349112729".to_string();
@@ -182,6 +185,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[ignore = "API Key required"]
     async fn get_league() {
         let client = RiotClient::new(api_key());
         let puuid =

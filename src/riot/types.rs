@@ -11,6 +11,7 @@ pub enum RiotApiError {
     #[error("HTTP status error: {0}")]
     Status(reqwest::StatusCode),
 }
+
 /// A call to Riot API can either result in a success with the success type or fail with a [`RiotApiError`].
 pub type RiotApiResponse<T> = Result<T, RiotApiError>;
 

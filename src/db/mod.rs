@@ -210,6 +210,14 @@ fn track_new_account(
 ) -> rusqlite::Result<()> {
     let guild_id_u64: u64 = guild_id.into();
 
+    // Ensure the guild exists in guild_settings so the foreign key constraint
+    // on account_guilds doesn't fail when tracking a new account before any
+    // alert channel has been configured for that guild.
+    conn.execute(
+        "INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?1)",
+        [guild_id_u64],
+    )?;
+
     conn.execute(
         "INSERT OR REPLACE INTO accounts
         (puuid, game_name, tag_line, region, last_match_id) VALUES (?1, ?2, ?3, ?4, \"\")",
@@ -352,4 +360,67 @@ pub fn get_guilds_for_puuid(
     }
 
     Ok(result)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::riot::types::{AccountDto, Region};
+    use poise::serenity_prelude::{ChannelId, GuildId};
+
+    fn setup_connection() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute(
+            "CREATE TABLE guild_settings (guild_id INTEGER PRIMARY KEY, alert_channel_id INTEGER)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE accounts (puuid TEXT PRIMARY KEY, game_name TEXT NOT NULL, tag_line TEXT NOT NULL, region TEXT NOT NULL, last_match_id TEXT NOT NULL)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "CREATE TABLE account_guilds (puuid TEXT, guild_id INTEGER, PRIMARY KEY (puuid, guild_id), FOREIGN KEY (puuid) REFERENCES accounts(puuid), FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id))",
+            [],
+        )
+        .unwrap();
+        migrations::V1::do_migration(&conn);
+        conn
+    }
+
+    fn sample_account() -> AccountDto {
+        AccountDto {
+            puuid: "puuid".into(),
+            game_name: Some("player".into()),
+            tag_line: Some("tag".into()),
+        }
+    }
+
+    #[test]
+    fn track_and_fetch_account() {
+        let conn = setup_connection();
+        track_new_account(&conn, sample_account(), Region::Euw, GuildId::new(1)).unwrap();
+
+        let accounts = get_all_accounts(&conn).unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].game_name, "player");
+    }
+
+    #[test]
+    fn set_and_get_alert_channel() {
+        let conn = setup_connection();
+        set_alert_channel(&conn, GuildId::new(1), ChannelId::new(2)).unwrap();
+        let res = get_alert_channel(&conn, GuildId::new(1));
+        assert_eq!(res, Some(ChannelId::new(2)));
+    }
+
+    #[test]
+    fn get_guilds_for_account() {
+        let conn = setup_connection();
+        track_new_account(&conn, sample_account(), Region::Euw, GuildId::new(1)).unwrap();
+        set_alert_channel(&conn, GuildId::new(1), ChannelId::new(2)).unwrap();
+        let map = get_guilds_for_puuid(&conn, "puuid".into()).unwrap();
+        assert_eq!(map.get(&GuildId::new(1)), Some(&Some(ChannelId::new(2))));
+    }
 }

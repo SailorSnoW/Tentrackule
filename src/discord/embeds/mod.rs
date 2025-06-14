@@ -94,3 +94,92 @@ fn create_solo_duo_alert_msg(
 
     Ok(embed)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::riot::types::{InfoDto, LeagueEntryDto, MatchDto, ParticipantDto};
+
+    fn sample_participant(puuid: &str) -> ParticipantDto {
+        ParticipantDto {
+            puuid: puuid.to_string(),
+            champion_name: "Ahri".into(),
+            team_position: "MID".into(),
+            win: true,
+            kills: 10,
+            deaths: 2,
+            assists: 5,
+            profile_icon: 1,
+            riot_id_game_name: "Player".into(),
+            riot_id_tagline: "EUW".into(),
+        }
+    }
+
+    fn sample_match(puuid: &str) -> MatchDto {
+        MatchDto {
+            info: InfoDto {
+                participants: vec![sample_participant(puuid)],
+                queue_id: 420,
+                game_duration: 1800,
+                game_creation: 0,
+            },
+        }
+    }
+
+    #[test]
+    fn returns_error_when_puuid_missing() {
+        let match_data = sample_match("p1");
+        let dto = MatchDtoWithLeagueInfo::new(match_data, None, None);
+        let err = dto.into_embed("other").unwrap_err();
+        assert!(err.to_string().contains("isn't part of the match"));
+    }
+
+    #[test]
+    fn creates_embed_with_league() {
+        let match_data = sample_match("p1");
+        let league = Some(LeagueEntryDto {
+            queue_type: "RANKED_SOLO_5x5".into(),
+            tier: "GOLD".into(),
+            rank: "IV".into(),
+            league_points: 50,
+        });
+        let dto = MatchDtoWithLeagueInfo::new(match_data, league, Some(40));
+
+        // We simply assert embed creation succeeds. CreateEmbed's internal fields
+        // are private so we cannot inspect them directly.
+        assert!(dto.into_embed("p1").is_ok());
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn send_embed_to_dev_guild() {
+        use poise::serenity_prelude::{ChannelId, Http};
+
+        dotenv::dotenv().ok();
+        let token = std::env::var("DISCORD_BOT_TOKEN").expect("token missing");
+        let channel_id: u64 = std::env::var("TEST_CHANNEL_ID")
+            .expect("channel id missing")
+            .parse()
+            .expect("invalid id");
+
+        let http = Http::new(&token);
+
+        let match_data = sample_match("p1");
+        let league = Some(LeagueEntryDto {
+            queue_type: "RANKED_SOLO_5x5".into(),
+            tier: "GOLD".into(),
+            rank: "IV".into(),
+            league_points: 50,
+        });
+        let dto = MatchDtoWithLeagueInfo::new(match_data, league, Some(40));
+        let embed = dto.into_embed("p1").unwrap();
+
+        ChannelId::new(channel_id)
+            .send_message(
+                &http,
+                poise::serenity_prelude::CreateMessage::new().embed(embed),
+            )
+            .await
+            .unwrap();
+    }
+}
