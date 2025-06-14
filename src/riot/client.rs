@@ -1,4 +1,4 @@
-use std::fmt::Debug;
+use std::{fmt::Debug, sync::Arc};
 
 use governor::{
     clock::DefaultClock,
@@ -16,16 +16,18 @@ pub struct RiotClient {
     pub limiter: RateLimiter<NotKeyed, InMemoryState, DefaultClock>,
     /// Riot API Key
     key: String,
+    metrics: Arc<super::metrics::RequestMetrics>,
 }
 
 impl RiotClient {
-    pub fn new(key: String) -> Self {
+    pub fn new(key: String, metrics: Arc<super::metrics::RequestMetrics>) -> Self {
         let q = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
 
         Self {
             client: reqwest::Client::new(),
             limiter: RateLimiter::direct(q),
             key,
+            metrics,
         }
     }
 
@@ -49,7 +51,7 @@ impl RiotClient {
             tag_line
         );
 
-        request(self.client.clone(), self.key.clone(), path).await
+        request(self.client.clone(), self.key.clone(), path, &self.metrics).await
     }
 
     // Match-V5 endpoint
@@ -68,7 +70,8 @@ impl RiotClient {
             params
         );
 
-        let seq: Vec<String> = request(self.client.clone(), self.key.clone(), path).await?;
+        let seq: Vec<String> =
+            request(self.client.clone(), self.key.clone(), path, &self.metrics).await?;
 
         Ok(seq.first().cloned())
     }
@@ -82,7 +85,7 @@ impl RiotClient {
             match_id,
         );
 
-        request(self.client.clone(), self.key.clone(), path).await
+        request(self.client.clone(), self.key.clone(), path, &self.metrics).await
     }
 
     // LEAGUE-V4 endpoint
@@ -99,7 +102,7 @@ impl RiotClient {
             puuid,
         );
 
-        request(self.client.clone(), self.key.clone(), path).await
+        request(self.client.clone(), self.key.clone(), path, &self.metrics).await
     }
 }
 
@@ -108,7 +111,10 @@ async fn request<T: DeserializeOwned + Debug>(
     client: reqwest::Client,
     key: String,
     path: String,
+    metrics: &super::metrics::RequestMetrics,
 ) -> Result<T, RiotApiError> {
+    metrics.inc();
+
     let res = client
         .get(path)
         .header("X-Riot-Token", key)
@@ -136,7 +142,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "API Key required"]
     async fn get_account_by_riot_id_works() {
-        let client = RiotClient::new(api_key());
+        let metrics = super::super::metrics::RequestMetrics::new();
+        let client = RiotClient::new(api_key(), metrics);
+
         let account = client
             .get_account_by_riot_id("Chalop".to_string(), "3012".to_string())
             .await
@@ -153,7 +161,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "API Key required"]
     async fn get_last_match_id_works() {
-        let client = RiotClient::new(api_key());
+        let metrics = super::super::metrics::RequestMetrics::new();
+        let client = RiotClient::new(api_key(), metrics);
+
         let puuid =
             "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
                 .to_string();
@@ -168,7 +178,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "API Key required"]
     async fn get_match_works() {
-        let client = RiotClient::new(api_key());
+        let metrics = super::super::metrics::RequestMetrics::new();
+        let client = RiotClient::new(api_key(), metrics);
+
         let match_id = "EUW1_7349112729".to_string();
 
         let match_data = client.get_match(match_id, Region::Euw).await.unwrap();
@@ -179,7 +191,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "API Key required"]
     async fn get_league() {
-        let client = RiotClient::new(api_key());
+        let metrics = super::super::metrics::RequestMetrics::new();
+        let client = RiotClient::new(api_key(), metrics);
+
         let puuid =
             "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
                 .to_string();
@@ -192,8 +206,9 @@ mod tests {
     #[tokio::test]
     async fn request_propagates_reqwest_error() {
         let client = reqwest::Client::new();
+        let metrics = super::super::metrics::RequestMetrics::new();
         let res: super::RiotApiResponse<()> =
-            super::request(client, String::new(), "invalid-url".into()).await;
+            super::request(client, String::new(), "invalid-url".into(), &metrics).await;
 
         assert!(matches!(res, Err(super::RiotApiError::Reqwest(_))));
     }

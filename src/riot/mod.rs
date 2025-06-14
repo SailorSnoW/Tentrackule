@@ -1,4 +1,4 @@
-use std::env;
+use std::{env, sync::Arc};
 
 use client::RiotClient;
 use tokio::sync::{mpsc, oneshot};
@@ -6,6 +6,7 @@ use tracing::info;
 use types::{AccountDto, LeagueEntryDto, MatchDto, Region, RiotApiResponse};
 
 mod client;
+mod metrics;
 pub mod result_poller;
 pub mod types;
 
@@ -16,6 +17,7 @@ pub struct RiotApiHandler {
     client: RiotClient,
     sender: RiotApiTx,
     receiver: RiotApiRx,
+    metrics: Arc<metrics::RequestMetrics>,
 }
 
 impl RiotApiHandler {
@@ -23,15 +25,22 @@ impl RiotApiHandler {
         let (tx, rx) = mpsc::channel(100);
         let key = env::var("RIOT_API_KEY")
             .expect("A Riot API Key must be set in environment to create the API Client.");
+        let metrics = metrics::RequestMetrics::new();
 
         Self {
-            client: RiotClient::new(key),
+            client: RiotClient::new(key, metrics.clone()),
             sender: tx,
             receiver: rx,
+            metrics,
         }
     }
 
     pub fn start(self) -> tokio::task::JoinHandle<()> {
+        let metrics = self.metrics.clone();
+        tokio::spawn(async move {
+            metrics.log_loop().await;
+        });
+
         tokio::spawn(async move {
             self.run().await;
         })
