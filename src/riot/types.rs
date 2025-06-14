@@ -122,7 +122,7 @@ impl ParticipantDto {
     }
     pub fn to_title_win_string(&self, lp_info: Option<i16>) -> String {
         let lp_info_str = match lp_info {
-            Some(p) => format!(" ({} LPs)", p),
+            Some(p) => format!(" ({:+} LPs)", p),
             None => "".to_string(),
         };
         let result_str = match self.win {
