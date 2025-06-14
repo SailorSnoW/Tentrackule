@@ -279,6 +279,8 @@ pub enum QueueType {
     SoloDuo,
     /// 5v5 Normal Draft Picks
     NormalDraft,
+    /// 5v5 Howling Abyss ARAM
+    Aram,
     Unhandled,
 }
 
@@ -287,6 +289,7 @@ impl From<u16> for QueueType {
         match value {
             400 => Self::NormalDraft,
             420 => Self::SoloDuo,
+            450 => Self::Aram,
             _ => Self::Unhandled,
         }
     }
@@ -297,6 +300,7 @@ impl QueueType {
         match self {
             QueueType::SoloDuo => "RANKED_SOLO_5x5",
             QueueType::NormalDraft => "", // No league queue type
+            QueueType::Aram => "",        // No league queue type
             QueueType::Unhandled => "UNHANDLED",
         }
     }

@@ -20,6 +20,7 @@ impl MatchDtoWithLeagueInfo {
         match self.match_data.queue_type() {
             QueueType::SoloDuo => create_solo_duo_alert_msg(focused_participant, &self),
             QueueType::NormalDraft => create_normal_draft_alert_msg(focused_participant, &self),
+            QueueType::Aram => create_aram_alert_msg(focused_participant, &self),
             QueueType::Unhandled => unreachable!(),
         }
     }
@@ -112,6 +113,23 @@ fn create_normal_draft_alert_msg(
     Ok(embed)
 }
 
+fn create_aram_alert_msg(
+    focused_participant: &ParticipantDto,
+    match_data: &MatchDtoWithLeagueInfo,
+) -> anyhow::Result<CreateEmbed> {
+    let author = CreateEmbedAuthor::new("[LoL] ARAM")
+        .icon_url(focused_participant.to_profile_icon_picture_url());
+    let embed = create_base_embed(focused_participant, match_data, true)?
+        .author(author)
+        .description(format!(
+            "**{}** just {} an ARAM game !",
+            focused_participant.riot_id_game_name,
+            focused_participant.to_formatted_win_string(),
+        ));
+
+    Ok(embed)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -149,6 +167,10 @@ mod tests {
 
     fn sample_normal_draft_match(puuid: &str) -> MatchDto {
         sample_lol_match(puuid, 400)
+    }
+
+    fn sample_aram_match(puuid: &str) -> MatchDto {
+        sample_lol_match(puuid, 450)
     }
 
     #[test]
@@ -193,6 +215,16 @@ mod tests {
         let embed = dto.into_embed("p1").expect("embed creation");
         let value = serde_json::to_value(&embed).unwrap();
         assert_eq!(value["author"]["name"], "[LoL] Solo/Duo Queue");
+    }
+
+    #[test]
+    fn creates_aram_embed() {
+        let match_data = sample_aram_match("p1");
+        let dto = MatchDtoWithLeagueInfo::new(match_data, None, None);
+
+        let embed = dto.into_embed("p1").expect("embed creation");
+        let value = serde_json::to_value(&embed).unwrap();
+        assert_eq!(value["author"]["name"], "[LoL] ARAM");
     }
 
     #[tokio::test]
@@ -243,6 +275,33 @@ mod tests {
         let http = Http::new(&token);
 
         let match_data = sample_normal_draft_match("p1");
+        let dto = MatchDtoWithLeagueInfo::new(match_data, None, None);
+        let embed = dto.into_embed("p1").unwrap();
+
+        ChannelId::new(channel_id)
+            .send_message(
+                &http,
+                poise::serenity_prelude::CreateMessage::new().embed(embed),
+            )
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    #[ignore]
+    async fn send_aram_embed_to_dev_guild() {
+        use poise::serenity_prelude::{ChannelId, Http};
+
+        dotenv::dotenv().ok();
+        let token = std::env::var("DISCORD_BOT_TOKEN").expect("token missing");
+        let channel_id: u64 = std::env::var("TEST_CHANNEL_ID")
+            .expect("channel id missing")
+            .parse()
+            .expect("invalid id");
+
+        let http = Http::new(&token);
+
+        let match_data = sample_aram_match("p1");
         let dto = MatchDtoWithLeagueInfo::new(match_data, None, None);
         let embed = dto.into_embed("p1").unwrap();
 
