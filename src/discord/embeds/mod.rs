@@ -34,10 +34,9 @@ fn create_base_embed(
     ));
 
     let embed = CreateEmbed::new()
-        .title(
-            focused_participant
-                .to_title_win_string(match_data.calculate_league_points_difference()),
-        )
+        .title(focused_participant.to_title_win_string(
+            match_data.calculate_league_points_difference(focused_participant.win),
+        ))
         .color(focused_participant.to_win_colour())
         .url(focused_participant.to_dpm_profile_url())
         .thumbnail(focused_participant.to_champion_picture_url())

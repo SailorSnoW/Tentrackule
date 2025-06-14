@@ -37,7 +37,7 @@ impl MatchDtoWithLeagueInfo {
 
     /// Calculate the gain/loss of LP between the cached value and the new match data.
     /// Returns a positive number for LP gain, negative for LP loss, or None if data is missing.
-    pub fn calculate_league_points_difference(&self) -> Option<i16> {
+    pub fn calculate_league_points_difference(&self, won: bool) -> Option<i16> {
         let Some(league_data) = &self.league_data else {
             warn!("⚠️ [RIOT] no league data for LP diff");
             return None;
@@ -48,7 +48,13 @@ impl MatchDtoWithLeagueInfo {
             return None;
         };
 
-        Some((league_data.league_points as i16) - (cached as i16))
+        let mut diff = league_data.league_points as i16 - cached as i16;
+
+        if (diff < 0 && won) || (diff > 0 && !won) {
+            diff += if won { 100 } else { -100 };
+        }
+
+        Some(diff)
     }
 }
 
@@ -324,8 +330,34 @@ mod tests {
         let match_with_info = MatchDtoWithLeagueInfo::new(match_data, league_data, Some(90));
 
         assert_eq!(
-            match_with_info.calculate_league_points_difference(),
+            match_with_info.calculate_league_points_difference(true),
             Some(10)
+        );
+    }
+
+    #[test]
+    fn win_with_rank_up_adjusts_difference() {
+        let match_data = dummy_match();
+        let league_data = Some(dummy_league_entry(20));
+
+        let match_with_info = MatchDtoWithLeagueInfo::new(match_data, league_data, Some(90));
+
+        assert_eq!(
+            match_with_info.calculate_league_points_difference(true),
+            Some(30)
+        );
+    }
+
+    #[test]
+    fn loss_with_rank_down_adjusts_difference() {
+        let match_data = dummy_match();
+        let league_data = Some(dummy_league_entry(80));
+
+        let match_with_info = MatchDtoWithLeagueInfo::new(match_data, league_data, Some(20));
+
+        assert_eq!(
+            match_with_info.calculate_league_points_difference(false),
+            Some(-40)
         );
     }
 
@@ -334,10 +366,16 @@ mod tests {
         let match_data = dummy_match();
 
         let with_no_league = MatchDtoWithLeagueInfo::new(match_data.clone(), None, Some(90));
-        assert_eq!(with_no_league.calculate_league_points_difference(), None);
+        assert_eq!(
+            with_no_league.calculate_league_points_difference(true),
+            None
+        );
 
         let with_no_cached =
             MatchDtoWithLeagueInfo::new(match_data, Some(dummy_league_entry(100)), None);
-        assert_eq!(with_no_cached.calculate_league_points_difference(), None);
+        assert_eq!(
+            with_no_cached.calculate_league_points_difference(true),
+            None
+        );
     }
 }
