@@ -7,7 +7,7 @@ use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::{mpsc, oneshot};
 use types::Account;
 
-use crate::riot::types::{AccountDto, LeaguePoints, Region};
+use crate::riot::types::{AccountDto, LeaguePoints, QueueType, Region};
 
 pub mod types;
 
@@ -97,14 +97,16 @@ impl DatabaseHandler {
                 } => {
                     let _ = respond_to.send(set_last_match_id(&self.connection, puuid, match_id));
                 }
-                DbRequest::SetNewLolSoloDuoLps {
+                DbRequest::UpdateLeaguePoints {
                     puuid,
+                    queue_type,
                     league_points,
                     respond_to,
                 } => {
-                    let _ = respond_to.send(set_new_lol_solo_duo_lps(
+                    let _ = respond_to.send(update_league_points(
                         &self.connection,
                         puuid,
+                        queue_type,
                         league_points,
                     ));
                 }
@@ -157,6 +159,7 @@ impl DatabaseHandler {
         // Run Migrations
         debug!("📜 Running migrations...");
         migrations::V1::do_migration(&self.connection);
+        migrations::V2::do_migration(&self.connection);
 
         info!("📜 Database initialized.");
     }
@@ -185,8 +188,9 @@ pub enum DbRequest {
         match_id: String,
         respond_to: oneshot::Sender<rusqlite::Result<()>>,
     },
-    SetNewLolSoloDuoLps {
+    UpdateLeaguePoints {
         puuid: String,
+        queue_type: QueueType,
         league_points: LeaguePoints,
         respond_to: oneshot::Sender<rusqlite::Result<()>>,
     },
@@ -275,21 +279,24 @@ fn set_last_match_id(conn: &Connection, puuid: String, match_id: String) -> rusq
     .map(|_| ())
 }
 
-fn set_new_lol_solo_duo_lps(
+fn update_league_points(
     conn: &Connection,
     puuid: String,
+    queue_type: QueueType,
     league_points: LeaguePoints,
 ) -> rusqlite::Result<()> {
     conn.execute(
-        "UPDATE accounts SET lol_solo_duo_lps = ?1 WHERE puuid = ?2",
-        params![league_points, puuid],
+        "INSERT OR REPLACE INTO league_points (puuid, queue_type, league_points) VALUES (?1, ?2, ?3)",
+        params![puuid, queue_type.as_str(), league_points],
     )
     .map(|_| ())
 }
 
 fn get_all_accounts(conn: &Connection) -> rusqlite::Result<Vec<Account>> {
     let mut stmt = conn.prepare(
-        "SELECT puuid, game_name, tag_line, region, last_match_id, lol_solo_duo_lps FROM accounts",
+        "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id, lp.league_points
+        FROM accounts a
+        LEFT JOIN league_points lp ON a.puuid = lp.puuid AND lp.queue_type = 'RANKED_SOLO_5x5'",
     )?;
 
     let rows = stmt.query_map([], |row| {
@@ -302,7 +309,7 @@ fn get_all_accounts(conn: &Connection) -> rusqlite::Result<Vec<Account>> {
                 str.try_into().unwrap()
             },
             last_match_id: row.get(4)?,
-            cached_lol_solo_duo_lps: row.get(5)?,
+            cached_league_points: row.get(5)?,
         })
     })?;
 
@@ -312,9 +319,10 @@ fn get_guild_accounts(conn: &Connection, guild_id: GuildId) -> rusqlite::Result<
     let guild_id_str = guild_id.to_string(); // Conversion u64 -> String
 
     let mut stmt = conn.prepare(
-        "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id, a.lol_solo_duo_lps
+        "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id, lp.league_points
         FROM accounts a
         INNER JOIN account_guilds ag ON a.puuid = ag.puuid
+        LEFT JOIN league_points lp ON a.puuid = lp.puuid AND lp.queue_type = 'RANKED_SOLO_5x5'
         WHERE ag.guild_id = ?",
     )?;
 
@@ -328,7 +336,7 @@ fn get_guild_accounts(conn: &Connection, guild_id: GuildId) -> rusqlite::Result<
                 str.try_into().unwrap()
             },
             last_match_id: row.get(4)?,
-            cached_lol_solo_duo_lps: row.get(5)?,
+            cached_league_points: row.get(5)?,
         })
     })?;
 
@@ -386,6 +394,7 @@ mod tests {
         )
         .unwrap();
         migrations::V1::do_migration(&conn);
+        migrations::V2::do_migration(&conn);
         conn
     }
 

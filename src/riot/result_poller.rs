@@ -130,7 +130,7 @@ impl ResultPoller {
         match match_data.queue_type() {
             QueueType::SoloDuo => {
                 // Get the cached league points data
-                let cached_league_points = account.cached_lol_solo_duo_lps;
+                let cached_league_points = account.cached_league_points;
                 // Get the new league data
                 let league = self
                     .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
@@ -142,8 +142,12 @@ impl ResultPoller {
                             "Caching new fetched league points ({}) for {}#{}.",
                             x.league_points, account.game_name, account.tag_line
                         );
-                        self.set_new_lol_solo_duo_lps(account.puuid.clone(), x.league_points)
-                            .await
+                        self.update_league_points(
+                            account.puuid.clone(),
+                            QueueType::SoloDuo,
+                            x.league_points,
+                        )
+                        .await
                     }
                     None => warn!("Something went wrong and no league data was fetched !"),
                 }
@@ -217,12 +221,18 @@ impl ResultPoller {
         let _ = rx.await;
     }
 
-    async fn set_new_lol_solo_duo_lps(&self, puuid: String, league_points: LeaguePoints) {
+    async fn update_league_points(
+        &self,
+        puuid: String,
+        queue_type: QueueType,
+        league_points: LeaguePoints,
+    ) {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self
             .db_sender
-            .send(DbRequest::SetNewLolSoloDuoLps {
+            .send(DbRequest::UpdateLeaguePoints {
                 puuid,
+                queue_type,
                 league_points,
                 respond_to: tx,
             })

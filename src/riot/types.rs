@@ -267,6 +267,7 @@ impl TryFrom<String> for Region {
     }
 }
 
+#[derive(Debug)]
 pub enum QueueType {
     /// Ranked Solo/Duo
     SoloDuo,
@@ -278,6 +279,15 @@ impl From<u16> for QueueType {
         match value {
             420 => Self::SoloDuo,
             _ => Self::Unhandled,
+        }
+    }
+}
+
+impl QueueType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            QueueType::SoloDuo => "RANKED_SOLO_5x5",
+            QueueType::Unhandled => "UNHANDLED",
         }
     }
 }

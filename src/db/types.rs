@@ -7,5 +7,6 @@ pub struct Account {
     pub tag_line: String,
     pub region: Region,
     pub last_match_id: String,
-    pub cached_lol_solo_duo_lps: Option<LeaguePoints>,
+    /// Cached league points for the `RANKED_SOLO_5x5` queue.
+    pub cached_league_points: Option<LeaguePoints>,
 }
