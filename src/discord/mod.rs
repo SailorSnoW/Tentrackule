@@ -1,4 +1,4 @@
-use commands::{current_alert_channel, set_alert_channel, show_tracked, track};
+use commands::{current_alert_channel, set_alert_channel, show_tracked, track, untrack};
 use poise::serenity_prelude as serenity;
 use serenity::*;
 use std::env;
@@ -40,6 +40,7 @@ impl DiscordBot {
                     current_alert_channel(),
                     track(),
                     show_tracked(),
+                    untrack(),
                 ],
                 event_handler: |ctx, event, framework, _| {
                     Box::pin(event_handler(ctx, event, framework))

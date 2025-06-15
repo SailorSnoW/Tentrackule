@@ -101,6 +101,69 @@ pub async fn track(
     Ok(())
 }
 
+/// Stop tracking a player in this server.
+#[poise::command(slash_command, category = "Tracking", ephemeral)]
+pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result<(), Error> {
+    enter_command_log("untrack");
+
+    let Some(guild_id) = require_guild(&ctx).await else {
+        return Ok(());
+    };
+
+    debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
+    let (tx, rx) = oneshot::channel();
+    ctx.data()
+        .api_sender
+        .send(ApiRequest::PuuidByAccountId {
+            game_name: game_name.clone(),
+            tag_line: tag.clone(),
+            respond_to: tx,
+        })
+        .await?;
+
+    let account_data = match rx.await? {
+        Ok(account_data) => account_data,
+        Err(err) => {
+            tracing::error!("[CMD] Riot API error while getting account: {:?}", err);
+
+            match err {
+                RiotApiError::Status(StatusCode::NOT_FOUND) => ctx
+                    .say("❌ Player not found on Riot servers. Please try with another summoner name/tag.")
+                    .await?,
+                _ => ctx
+                    .say("❌ Something went wrong during summoner API request.")
+                    .await?,
+            };
+
+            return Ok(());
+        }
+    };
+
+    let (tx, rx) = oneshot::channel();
+    ctx.data()
+        .db_sender
+        .send(DbRequest::UntrackAccount {
+            puuid: account_data.puuid.clone(),
+            guild_id,
+            respond_to: tx,
+        })
+        .await?;
+
+    if let Err(e) = rx.await? {
+        tracing::error!("[CMD] DB error while untracking player: {}", e);
+        ctx.say("❌ Internal Error: Something went wrong during database operations.")
+            .await?;
+        return Ok(());
+    };
+
+    ctx.say(format!(
+        "🗑️ Successfully stopped tracking summoner: **{}#{}**",
+        game_name, tag
+    ))
+    .await?;
+    Ok(())
+}
+
 /// Show a list of the current tracked players on this server.
 #[poise::command(slash_command, category = "Tracking", ephemeral)]
 pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {

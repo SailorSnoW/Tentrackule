@@ -113,6 +113,13 @@ impl DatabaseHandler {
                 DbRequest::GetGuildsForAccount { puuid, respond_to } => {
                     let _ = respond_to.send(get_guilds_for_puuid(&self.connection, puuid));
                 }
+                DbRequest::UntrackAccount {
+                    puuid,
+                    guild_id,
+                    respond_to,
+                } => {
+                    let _ = respond_to.send(untrack_account(&self.connection, puuid, guild_id));
+                }
             }
         }
     }
@@ -204,6 +211,11 @@ pub enum DbRequest {
         guild_id: GuildId,
         respond_to: oneshot::Sender<rusqlite::Result<()>>,
     },
+    UntrackAccount {
+        puuid: String,
+        guild_id: GuildId,
+        respond_to: oneshot::Sender<rusqlite::Result<()>>,
+    },
 }
 
 fn track_new_account(
@@ -238,6 +250,32 @@ fn track_new_account(
         params![account_data.puuid, guild_id_u64],
     )
     .map(|_| ())
+}
+
+fn untrack_account(conn: &Connection, puuid: String, guild_id: GuildId) -> rusqlite::Result<()> {
+    let guild_id_u64: u64 = guild_id.into();
+
+    conn.execute(
+        "DELETE FROM account_guilds WHERE puuid = ?1 AND guild_id = ?2",
+        params![puuid, guild_id_u64],
+    )?;
+
+    let remaining: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM account_guilds WHERE puuid = ?1",
+        [puuid.clone()],
+        |row| row.get(0),
+    )?;
+
+    // If the player is no longer tracked in any guild, we remove extra informations
+    if remaining == 0 {
+        conn.execute(
+            "DELETE FROM league_points WHERE puuid = ?1",
+            [puuid.clone()],
+        )?;
+        conn.execute("DELETE FROM accounts WHERE puuid = ?1", [puuid])?;
+    }
+
+    Ok(())
 }
 
 fn set_alert_channel(
@@ -431,5 +469,16 @@ mod tests {
         set_alert_channel(&conn, GuildId::new(1), ChannelId::new(2)).unwrap();
         let map = get_guilds_for_puuid(&conn, "puuid".into()).unwrap();
         assert_eq!(map.get(&GuildId::new(1)), Some(&Some(ChannelId::new(2))));
+    }
+
+    #[test]
+    fn untrack_account_removes_entries() {
+        let conn = setup_connection();
+        track_new_account(&conn, sample_account(), Region::Euw, GuildId::new(1)).unwrap();
+
+        untrack_account(&conn, "puuid".into(), GuildId::new(1)).unwrap();
+
+        let accounts = get_all_accounts(&conn).unwrap();
+        assert_eq!(accounts.len(), 0);
     }
 }
