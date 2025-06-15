@@ -1,17 +1,38 @@
 # 🐙 Tentrackule
 
-Tentrackule is a Discord bot designed to track and alert when a monitored player has finished a game in **League of Legends** or **Teamfight Tactics**, using the Riot API.  
-It is developed in **Rust**, utilizes **SQLite (rusqlite)** for data storage, and relies on **Serenity + Poise** for Discord integration.
+Tentrackule is a Discord bot written in **Rust** that tracks players on
+**League of Legends** and sends an alert when a new match is completed. It uses
+the Riot Games API to fetch match information and stores data in a local
+**SQLite** database. Discord integration is handled through **Serenity** and
+the **Poise** command framework.
 
-The bot aims to be **efficient and optimized** in its use of the Riot API, minimizing unnecessary calls.
+The project aims to be lightweight and respectful of the Riot API rate limits by
+caching useful information and only calling the API when required.
 
 ## 🚀 Features
 
 - 🔔 **Game Completion Alerts**: Get notified when a tracked player finishes a game.
-- 📊 Fetch game statistics for **LoL** and **TFT**.
-- 🔍 Track player performance via their **Summoner Name**.
+- 📊 Fetch game statistics for **LoL** games directly from Riot.
+- 🔍 Track player performance via their **Summoner Name** and tag.
 - ⚡ Optimize API calls to reduce quota usage.
 - 📚 Local storage with **SQLite** for better efficiency.
+- 🌐 Works across multiple guilds and allows a dedicated alert channel per guild.
+
+## 🏗 Architecture Overview
+
+Tentrackule is split into a few asynchronous tasks which communicate through
+message channels:
+
+1. **Discord Bot** – exposes slash commands via Poise and sends alerts to your
+   server.
+2. **Database Handler** – wraps an SQLite database for storing tracked accounts
+   and guild settings.
+3. **Riot API Handler** – performs requests to Riot while respecting rate limits
+   and collects simple metrics.
+4. **Result Poller** – periodically checks for new matches and dispatches alerts
+   when a tracked player finishes a game.
+
+Each component runs in its own Tokio task and failures are logged.
 
 ## 📥 Installation and Execution
 
@@ -45,6 +66,18 @@ The bot aims to be **efficient and optimized** in its use of the Riot API, minim
    cargo run --release
    ```
 
+### Available Commands
+
+The bot exposes several slash commands once invited to your guild:
+
+| Command                        | Description                                    |
+| ------------------------------ | ---------------------------------------------- |
+| `/track <name> <tag> <region>` | Start tracking a player                        |
+| `/untrack <name> <tag>`        | Stop tracking a player in the current server   |
+| `/show_tracked`                | List all tracked players in this server        |
+| `/set_alert_channel <channel>` | Choose where alerts should be posted           |
+| `/current_alert_channel`       | Display the currently configured alert channel |
+
 ## 🛠 Contribution
 
 Contributions are welcome!
@@ -62,5 +95,10 @@ I do **not** host a public version of the bot at this time.
 Riot Games has not granted me access to the **production** API, preventing deployment at a large scale.
 
 If you want to use **Tentrackule**, you will need to host it yourself with your own API key.
+
+## 📄 License
+
+This project is distributed under the terms of the MIT license. See
+[`LICENSE.md`](LICENSE.md) for details.
 
 ---
