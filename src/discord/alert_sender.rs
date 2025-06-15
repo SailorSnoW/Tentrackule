@@ -95,15 +95,36 @@ impl AlertSender {
 
     async fn get_guilds_for_account(&self, puuid: String) -> HashMap<GuildId, Option<ChannelId>> {
         let (tx, rx) = oneshot::channel();
-        self.db_sender
+
+        if let Err(e) = self
+            .db_sender
             .send(DbRequest::GetGuildsForAccount {
                 puuid,
                 respond_to: tx,
             })
             .await
-            .unwrap();
+        {
+            error!("❌ [ALERT] failed to send DB request: {}", e);
+            return HashMap::new();
+        }
 
-        rx.await.unwrap().unwrap()
+        match rx.await {
+            Ok(Ok(guilds)) => guilds,
+            Ok(Err(e)) => {
+                error!(
+                    "❌ [ALERT] DB error while getting guilds for account: {}",
+                    e
+                );
+                HashMap::new()
+            }
+            Err(e) => {
+                error!(
+                    "❌ [ALERT] DB request cancelled while getting guilds for account: {}",
+                    e
+                );
+                HashMap::new()
+            }
+        }
     }
 }
 
