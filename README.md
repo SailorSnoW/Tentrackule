@@ -59,6 +59,9 @@ Each component runs in its own Tokio task and failures are logged.
    # Optional: configure log verbosity (error, warn, info, debug, trace)
    RUST_LOG=info
 
+   # Optional: polling interval in seconds for fetching new results
+   POLL_INTERVAL_SECONDS=60
+
    ```
 
 3. Compile and run the bot:

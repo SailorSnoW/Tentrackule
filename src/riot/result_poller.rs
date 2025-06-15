@@ -7,6 +7,7 @@ use crate::{
     discord::{AlertSenderMessage, AlertSenderTx},
     riot::types::{MatchDtoWithLeagueInfo, QueueType},
 };
+use futures::{stream, StreamExt};
 use poise::serenity_prelude::Timestamp;
 use std::time::Duration;
 use tokio::sync::{mpsc, oneshot};
@@ -18,6 +19,7 @@ pub struct ResultPoller {
     db_sender: mpsc::Sender<DbRequest>,
     bot_sender: AlertSenderTx,
     start_time: u64,
+    poll_interval: Duration,
 }
 
 impl ResultPoller {
@@ -25,12 +27,14 @@ impl ResultPoller {
         api_sender: mpsc::Sender<ApiRequest>,
         db_sender: mpsc::Sender<DbRequest>,
         bot_sender: AlertSenderTx,
+        poll_interval: Duration,
     ) -> Self {
         Self {
             api_sender,
             db_sender,
             bot_sender,
             start_time: Timestamp::now().timestamp_millis() as u64,
+            poll_interval,
         }
     }
 
@@ -44,17 +48,19 @@ impl ResultPoller {
         info!("📡 [POLL] poller started");
 
         // Each time we will poll for new results.
-        let mut interval = tokio::time::interval(Duration::from_secs(60));
+        let mut interval = tokio::time::interval(self.poll_interval);
 
         loop {
             interval.tick().await;
 
             info!("🔄 [POLL] starting fetch cycle");
-            // We fetch all registered accounts to get the results.
+            // We fetch all registered accounts to get the results (concurrently).
             let accounts = self.get_all_accounts().await;
-            for account in accounts {
-                self.process_account(account).await
-            }
+            stream::iter(accounts)
+                .for_each_concurrent(10, |account| async move {
+                    self.process_account(account).await;
+                })
+                .await;
         }
     }
 
