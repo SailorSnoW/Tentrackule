@@ -35,6 +35,7 @@ fn create_base_embed(
         "Duration: {}",
         match_data.match_data.to_formatted_match_duration()
     ));
+    let mut fields = Vec::new();
 
     let embed = CreateEmbed::new()
         .title(focused_participant.to_title_win_string(
@@ -43,27 +44,22 @@ fn create_base_embed(
         .color(focused_participant.to_win_colour())
         .url(focused_participant.to_dpm_profile_url())
         .thumbnail(focused_participant.to_champion_picture_url())
-        .footer(footer)
-        .fields(vec![
-            (
-                "K/D/A",
-                format!(
-                    "{}/{}/{}",
-                    focused_participant.kills,
-                    focused_participant.deaths,
-                    focused_participant.assists
-                ),
-                true,
-            ),
-            (
-                "Role",
-                focused_participant.team_position.clone(),
-                with_role_field,
-            ),
-            ("Champion", focused_participant.champion_name.clone(), true),
-        ]);
+        .footer(footer);
 
-    Ok(embed)
+    fields.push((
+        "K/D/A",
+        format!(
+            "{}/{}/{}",
+            focused_participant.kills, focused_participant.deaths, focused_participant.assists
+        ),
+        true,
+    ));
+    if with_role_field {
+        fields.push(("Role", focused_participant.team_position.clone(), true));
+    }
+    fields.push(("Champion", focused_participant.champion_name.clone(), true));
+
+    Ok(embed.fields(fields))
 }
 
 fn create_solo_duo_alert_msg(
