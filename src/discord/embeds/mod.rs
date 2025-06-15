@@ -25,6 +25,7 @@ impl MatchDtoWithLeagueInfo {
         }
     }
 }
+
 fn create_base_embed(
     focused_participant: &ParticipantDto,
     match_data: &MatchDtoWithLeagueInfo,
@@ -119,7 +120,7 @@ fn create_aram_alert_msg(
 ) -> anyhow::Result<CreateEmbed> {
     let author = CreateEmbedAuthor::new("[LoL] ARAM")
         .icon_url(focused_participant.to_profile_icon_picture_url());
-    let embed = create_base_embed(focused_participant, match_data, true)?
+    let embed = create_base_embed(focused_participant, match_data, false)?
         .author(author)
         .description(format!(
             "**{}** just {} an ARAM game !",
