@@ -9,6 +9,8 @@ the **Poise** command framework.
 The project aims to be lightweight and respectful of the Riot API rate limits by
 caching useful information and only calling the API when required.
 
+[Join the community Discord](https://discord.gg/JbFPpVmaPe)
+
 ## 🚀 Features
 
 - 🔔 **Game Completion Alerts**: Get notified when a tracked player finishes a game.
