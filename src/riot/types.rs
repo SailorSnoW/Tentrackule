@@ -108,6 +108,16 @@ pub struct ParticipantDto {
 }
 
 impl ParticipantDto {
+    pub fn to_normalized_role(&self) -> String {
+        match self.team_position.as_str() {
+            "TOP" => "Top".to_string(),
+            "JUNGLE" => "Jungle".to_string(),
+            "MIDDLE" => "Mid".to_string(),
+            "BOTTOM" => "AD Carry".to_string(),
+            "UTILITY" => "Support".to_string(),
+            _ => "".to_string(),
+        }
+    }
     pub fn to_profile_icon_picture_url(&self) -> String {
         format!(
             "https://ddragon.leagueoflegends.com/cdn/15.7.1/img/profileicon/{}.png",

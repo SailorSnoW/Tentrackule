@@ -55,7 +55,7 @@ fn create_base_embed(
         true,
     ));
     if with_role_field {
-        fields.push(("Role", focused_participant.team_position.clone(), true));
+        fields.push(("Role", focused_participant.to_normalized_role(), true));
     }
     fields.push(("Champion", focused_participant.champion_name.clone(), true));
 
