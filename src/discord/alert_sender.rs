@@ -67,19 +67,11 @@ impl AlertSender {
             let maybe_channel_id = guild.1;
             match maybe_channel_id {
                 Some(channel_id) => {
-                    let maybe_msg = channel_id
+                    if let Err(e) = channel_id
                         .send_message(&self.ctx, CreateMessage::new().embed(alert.clone()))
-                        .await;
-                    match maybe_msg {
-                        Ok(msg) => {
-                            let _ = msg.react(&self.ctx, '🎉').await;
-                            let _ = msg.react(&self.ctx, '😂').await;
-                            let _ = msg.react(&self.ctx, '😭').await;
-                            let _ = msg.react(&self.ctx, '😱').await;
-                        }
-                        Err(e) => {
-                            error!("❌ [ALERT] failed to send message: {}", e)
-                        }
+                        .await
+                    {
+                        error!("❌ [ALERT] failed to send message: {}", e)
                     }
                 }
                 None => {
