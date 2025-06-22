@@ -54,7 +54,7 @@ Each component runs in its own Tokio task and failures are logged.
 2. Create a `.env` file at the root with:
 
    ```env
-   # Trailing slashes are ignored
+   # Trailing slashes are ignored; '~' expands to $HOME
    DB_PATH=path_to_the_db_storage_writting
 
    DISCORD_BOT_TOKEN=your_discord_bot_token
