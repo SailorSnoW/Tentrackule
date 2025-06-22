@@ -125,9 +125,13 @@ impl ParticipantDto {
         )
     }
     pub fn to_champion_picture_url(&self) -> String {
+        let mut champion_name = self.champion_name.clone();
+        if self.champion_name == "FiddleSticks" {
+            champion_name = "Fiddlesticks".to_string()
+        }
         format!(
             "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/champion/{}.png",
-            self.champion_name
+            champion_name
         )
     }
     pub fn to_dpm_profile_url(&self) -> String {
