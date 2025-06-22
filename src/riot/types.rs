@@ -120,13 +120,13 @@ impl ParticipantDto {
     }
     pub fn to_profile_icon_picture_url(&self) -> String {
         format!(
-            "https://ddragon.leagueoflegends.com/cdn/15.7.1/img/profileicon/{}.png",
+            "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/profileicon/{}.png",
             self.profile_icon
         )
     }
     pub fn to_champion_picture_url(&self) -> String {
         format!(
-            "https://ddragon.leagueoflegends.com/cdn/15.7.1/img/champion/{}.png",
+            "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/champion/{}.png",
             self.champion_name
         )
     }
