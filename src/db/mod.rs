@@ -27,10 +27,12 @@ impl DatabaseHandler {
         let (tx, rx) = mpsc::channel(100);
 
         info!("💾 [DB] opening SQLite connection");
-        let path = env::var("DB_PATH").unwrap_or("./".to_string());
+        let db_dir = env::var("DB_PATH").unwrap_or("./".to_string());
+        // Handle trailing path separators gracefully
+        let mut db_path = std::path::PathBuf::from(db_dir);
+        db_path.push("database.db3");
 
-        let connection = Connection::open(format!("{}/database.db3", path))
-            .expect("Database open successfully.");
+        let connection = Connection::open(db_path).expect("Database open successfully.");
 
         Self {
             connection,
