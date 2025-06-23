@@ -194,7 +194,7 @@ impl LeagueEntryDto {
     }
 }
 
-#[derive(Debug, Clone, poise::ChoiceParameter)]
+#[derive(Debug, Clone, PartialEq, Eq, poise::ChoiceParameter)]
 pub enum Region {
     Na,
     Euw,
@@ -324,6 +324,21 @@ impl QueueType {
 mod tests {
     use super::*;
 
+    fn dummy_participant(puuid: &str) -> ParticipantDto {
+        ParticipantDto {
+            puuid: puuid.into(),
+            champion_name: "Lux".into(),
+            team_position: "MIDDLE".into(),
+            win: true,
+            kills: 5,
+            deaths: 2,
+            assists: 8,
+            profile_icon: 1234,
+            riot_id_game_name: "Game".into(),
+            riot_id_tagline: "Tag".into(),
+        }
+    }
+
     fn dummy_match() -> MatchDto {
         MatchDto {
             info: InfoDto {
@@ -342,6 +357,71 @@ mod tests {
             rank: "IV".to_string(),
             league_points: lp,
         }
+    }
+
+    #[test]
+    fn match_helpers_work() {
+        let participant = dummy_participant("abc");
+        let match_data = MatchDto {
+            info: InfoDto {
+                participants: vec![participant.clone()],
+                queue_id: 420,
+                game_duration: 125,
+                game_creation: 0,
+            },
+        };
+
+        assert!(matches!(match_data.queue_type(), QueueType::SoloDuo));
+        assert!(match_data.participant_info_of("abc").is_some());
+        assert!(match_data.participant_info_of("missing").is_none());
+        assert_eq!(match_data.to_formatted_match_duration(), "02:05");
+    }
+
+    #[test]
+    fn participant_helpers_work() {
+        let p = dummy_participant("abc");
+
+        assert_eq!(p.to_normalized_role(), "Mid");
+        assert_eq!(
+            p.to_profile_icon_picture_url(),
+            "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/profileicon/1234.png"
+        );
+        assert_eq!(
+            p.to_champion_picture_url(),
+            "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/champion/Lux.png"
+        );
+        assert_eq!(p.to_dpm_profile_url(), "https://dpm.lol/Game-Tag");
+        assert_eq!(p.to_title_win_string(Some(12)), "Victory (+12 LPs)");
+        assert_eq!(p.to_formatted_win_string(), "won");
+        assert_eq!(p.to_win_colour(), Colour::from_rgb(39, 98, 218));
+    }
+
+    #[test]
+    fn fiddlesticks_picture_url_work() {
+        let mut p = dummy_participant("abc");
+        p.champion_name = "FiddleSticks".to_string();
+
+        assert_eq!(
+            p.to_champion_picture_url(),
+            "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/champion/Fiddlesticks.png"
+        );
+    }
+
+    #[test]
+    fn queue_type_and_region_conversions() {
+        let q = QueueType::from(420u16);
+        assert!(matches!(q, QueueType::SoloDuo));
+        assert_eq!(q.as_str(), "RANKED_SOLO_5x5");
+        assert!(matches!(QueueType::from(999u16), QueueType::Unhandled));
+
+        assert_eq!(Region::Euw.to_endpoint(), "euw1.api.riotgames.com");
+        assert_eq!(
+            Region::Na.to_global_endpoint(),
+            "americas.api.riotgames.com"
+        );
+        let s: String = Region::Na.into();
+        assert_eq!(s, "NA");
+        assert_eq!(Region::try_from("euw".to_string()).unwrap(), Region::Euw);
     }
 
     #[test]
