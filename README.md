@@ -66,6 +66,9 @@ Each component runs in its own Tokio task and failures are logged.
    # Optional: polling interval in seconds for fetching new results
    POLL_INTERVAL_SECONDS=60
 
+   # Optional: version of the ddragon assets
+   DDRAGON_VERSION=15.12.1
+
    ```
 
 3. Compile and run the bot:

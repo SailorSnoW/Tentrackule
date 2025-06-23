@@ -1,3 +1,5 @@
+use std::env;
+
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
 use thiserror::Error;
@@ -14,6 +16,10 @@ pub enum RiotApiError {
 
 /// A call to Riot API can either result in a success with the success type or fail with a [`RiotApiError`].
 pub type RiotApiResponse<T> = Result<T, RiotApiError>;
+
+fn ddragon_version() -> String {
+    env::var("DDRAGON_VERSION").unwrap_or_else(|_| "15.12.1".to_string())
+}
 
 #[derive(Debug, Clone)]
 pub struct MatchDtoWithLeagueInfo {
@@ -120,7 +126,8 @@ impl ParticipantDto {
     }
     pub fn to_profile_icon_picture_url(&self) -> String {
         format!(
-            "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/profileicon/{}.png",
+            "https://ddragon.leagueoflegends.com/cdn/{}/img/profileicon/{}.png",
+            ddragon_version(),
             self.profile_icon
         )
     }
@@ -130,7 +137,8 @@ impl ParticipantDto {
             champion_name = "Fiddlesticks".to_string()
         }
         format!(
-            "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/champion/{}.png",
+            "https://ddragon.leagueoflegends.com/cdn/{}/img/champion/{}.png",
+            ddragon_version(),
             champion_name
         )
     }
