@@ -10,9 +10,10 @@ use crate::{
     discord::AlertSender,
     riot::{api::types::MatchDtoWithLeagueInfo, types::QueueType},
 };
+use dotenv::dotenv;
 use futures::{stream, StreamExt};
 use poise::serenity_prelude::Timestamp;
-use std::{sync::Arc, time::Duration};
+use std::{env, sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
@@ -30,8 +31,15 @@ impl ResultPoller {
         lol_api: Arc<LolApi>,
         db_sender: mpsc::Sender<DbRequest>,
         alert_sender: AlertSender,
-        poll_interval: Duration,
     ) -> Self {
+        dotenv().ok();
+
+        let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
+            .ok()
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(60);
+        let poll_interval = Duration::from_secs(poll_interval_u64);
+
         Self {
             lol_api,
             db_sender,
