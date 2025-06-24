@@ -107,7 +107,7 @@ impl TryFrom<String> for Region {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum QueueType {
     /// Ranked Solo/Duo
     SoloDuo,

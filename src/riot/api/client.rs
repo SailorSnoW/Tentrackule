@@ -1,5 +1,6 @@
 use std::{env, fmt::Debug, sync::Arc};
 
+use dotenv::dotenv;
 use governor::{
     clock::DefaultClock,
     state::{InMemoryState, NotKeyed},
@@ -24,6 +25,8 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new() -> Self {
+        dotenv().ok();
+
         let q = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
         let key = env::var("RIOT_API_KEY")
             .expect("A Riot API Key must be set in environment to create the API Client.");
@@ -101,7 +104,7 @@ mod tests {
         let client = ApiClient::new();
 
         let account = client
-            .get_account_by_riot_id("Chalop".to_string(), "3012".to_string())
+            .get_account_by_riot_id("Le Conservateur".to_string(), "3012".to_string())
             .await
             .unwrap();
 
@@ -109,7 +112,7 @@ mod tests {
             account.puuid,
             "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
         );
-        assert_eq!(account.game_name, Some("Chalop".to_string()));
+        assert_eq!(account.game_name, Some("Le Conservateur".to_string()));
         assert_eq!(account.tag_line, Some("3012".to_string()))
     }
 

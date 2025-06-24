@@ -198,8 +198,8 @@ impl ResultPoller {
             }
             QueueType::Unhandled => {
                 debug!(
-                    "❌ [POLL] {}#{} unsupported queue type",
-                    account.game_name, account.tag_line
+                    "❌ [POLL] {}#{} unsupported queue ID: {}",
+                    account.game_name, account.tag_line, match_data.info.queue_id
                 );
             }
         }
