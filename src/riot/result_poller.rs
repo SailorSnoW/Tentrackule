@@ -50,21 +50,23 @@ impl ResultPoller {
     async fn run(&self) {
         info!("📡 [POLL] poller started");
 
-        // Each time we will poll for new results.
         let mut interval = tokio::time::interval(self.poll_interval);
 
         loop {
             interval.tick().await;
-
-            info!("🔄 [POLL] starting fetch cycle");
-            // We fetch all registered accounts to get the results (concurrently).
-            let accounts = self.get_all_accounts().await;
-            stream::iter(accounts)
-                .for_each_concurrent(10, |account| async move {
-                    self.process_account(account).await;
-                })
-                .await;
+            self.poll_once().await;
         }
+    }
+
+    async fn poll_once(&self) {
+        info!("🔄 [POLL] starting fetch cycle");
+
+        let accounts = self.get_all_accounts().await;
+        stream::iter(accounts)
+            .for_each_concurrent(10, |account| async move {
+                self.process_account(account).await;
+            })
+            .await;
     }
 
     async fn get_all_accounts(&self) -> Vec<Account> {
@@ -96,13 +98,12 @@ impl ResultPoller {
             account.game_name, account.tag_line
         );
         let Some(new_match_id) = self
-            .get_new_match_id(account.puuid.clone(), account.region.clone())
+            .fetch_new_match_id(account.puuid.clone(), account.region.clone())
             .await
         else {
             return;
         };
 
-        // If this is equal, no new game was ended for this account, we do nothing and just return.
         if new_match_id == account.last_match_id {
             debug!(
                 "⏭️ [POLL] {}#{} no new result",
@@ -111,23 +112,20 @@ impl ResultPoller {
             return;
         }
 
-        // Else we first register the new game ID in the database
         debug!(
             "💾 [POLL] {}#{} caching match {}",
             account.game_name, account.tag_line, new_match_id
         );
-        self.set_new_match_id(account.puuid.clone(), new_match_id.clone())
+        self.store_new_match_id(account.puuid.clone(), new_match_id.clone())
             .await;
 
-        // Then we fetch the game data.
         let Some(match_data) = self
-            .get_match_data(new_match_id, account.region.clone())
+            .fetch_match_data(new_match_id, account.region.clone())
             .await
         else {
             return;
         };
 
-        // This check ensure we do not alert on old match if any match was already cached in DB.
         if self.start_time > match_data.info.game_creation {
             debug!(
                 "🗑️ [POLL] {}#{} old match ignored",
@@ -136,29 +134,30 @@ impl ResultPoller {
             return;
         }
 
+        self.dispatch_alert_if_needed(account, match_data).await;
+    }
+
+    async fn dispatch_alert_if_needed(&self, account: Account, match_data: MatchDto) {
         match match_data.queue_type() {
             QueueType::SoloDuo => {
-                // Get the cached league points data
                 let cached_league_points = account.cached_league_points;
-                // Get the new league data
                 let league = self
                     .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
                     .await;
 
-                match &league {
-                    Some(x) => {
-                        debug!(
-                            "⬆️ [POLL] updating league points to {} for {}#{}",
-                            x.league_points, account.game_name, account.tag_line
-                        );
-                        self.update_league_points(
-                            account.puuid.clone(),
-                            QueueType::SoloDuo,
-                            x.league_points,
-                        )
-                        .await
-                    }
-                    None => warn!("⚠️ [POLL] league data missing"),
+                if let Some(x) = &league {
+                    debug!(
+                        "⬆️ [POLL] updating league points to {} for {}#{}",
+                        x.league_points, account.game_name, account.tag_line
+                    );
+                    self.update_league_points(
+                        account.puuid.clone(),
+                        QueueType::SoloDuo,
+                        x.league_points,
+                    )
+                    .await;
+                } else {
+                    warn!("⚠️ [POLL] league data missing");
                 }
 
                 debug!(
@@ -172,19 +171,7 @@ impl ResultPoller {
                     )
                     .await;
             }
-            QueueType::NormalDraft => {
-                debug!(
-                    "📢 [POLL] dispatching alert for {}#{}",
-                    account.game_name, account.tag_line
-                );
-                self.alert_sender
-                    .dispatch_alert(
-                        &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, None, None),
-                    )
-                    .await;
-            }
-            QueueType::Aram => {
+            QueueType::NormalDraft | QueueType::Aram => {
                 debug!(
                     "📢 [POLL] dispatching alert for {}#{}",
                     account.game_name, account.tag_line
@@ -205,7 +192,7 @@ impl ResultPoller {
         }
     }
 
-    async fn get_new_match_id(&self, puuid: String, region: Region) -> Option<String> {
+    async fn fetch_new_match_id(&self, puuid: String, region: Region) -> Option<String> {
         let request = self.lol_api.match_v5.get_last_match_id(puuid, region).await;
         match request {
             Ok(maybe_id) => maybe_id,
@@ -216,7 +203,7 @@ impl ResultPoller {
         }
     }
 
-    async fn set_new_match_id(&self, puuid: String, match_id: String) {
+    async fn store_new_match_id(&self, puuid: String, match_id: String) {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self
             .db_sender
@@ -256,7 +243,7 @@ impl ResultPoller {
         let _ = rx.await;
     }
 
-    async fn get_match_data(&self, match_id: String, region: Region) -> Option<MatchDto> {
+    async fn fetch_match_data(&self, match_id: String, region: Region) -> Option<MatchDto> {
         let request = self.lol_api.match_v5.get_match(match_id, region).await;
         match request {
             Ok(m) => Some(m),
