@@ -89,6 +89,10 @@ pub struct AccountDto {
 
 #[cfg(test)]
 mod tests {
+    use std::env;
+
+    use dotenv::dotenv;
+
     use super::ApiClient;
 
     #[tokio::test]
@@ -111,6 +115,8 @@ mod tests {
 
     #[tokio::test]
     async fn request_propagates_reqwest_error() {
+        dotenv().ok();
+        env::set_var("RIOT_API_KEY", "TEST_KEY");
         let client = super::ApiClient::new();
 
         let bad_url = "ht!tp://invalid-url".to_string(); // incorrect schema
