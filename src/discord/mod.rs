@@ -1,13 +1,13 @@
 use commands::{current_alert_channel, set_alert_channel, show_tracked, track, untrack};
 use poise::serenity_prelude as serenity;
 use serenity::*;
-use std::env;
+use std::{env, sync::Arc};
 use tokio::sync::mpsc;
 use tracing::{error, info};
 
 use handler::event_handler;
 
-use crate::{db::DbRequest, riot::LolApiRequest};
+use crate::{db::DbRequest, riot::api::LolApi};
 
 pub use alert_sender::{AlertSender, AlertSenderMessage, AlertSenderTx};
 
@@ -26,10 +26,7 @@ pub struct DiscordBot {
 }
 
 impl DiscordBot {
-    pub async fn new(
-        db_sender: mpsc::Sender<DbRequest>,
-        api_sender: mpsc::Sender<LolApiRequest>,
-    ) -> Self {
+    pub async fn new(db_sender: mpsc::Sender<DbRequest>, lol_api: Arc<LolApi>) -> Self {
         let token =
             env::var("DISCORD_BOT_TOKEN").expect("Expected a discord bot token in the environment");
         let intents = GatewayIntents::non_privileged();
@@ -50,10 +47,7 @@ impl DiscordBot {
             .setup(|ctx, _ready, framework| {
                 Box::pin(async move {
                     poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                    Ok(Data {
-                        db_sender,
-                        api_sender,
-                    })
+                    Ok(Data { db_sender, lol_api })
                 })
             })
             .build();
@@ -86,5 +80,5 @@ impl DiscordBot {
 #[derive(Debug)]
 pub struct Data {
     db_sender: mpsc::Sender<DbRequest>,
-    api_sender: mpsc::Sender<LolApiRequest>,
+    lol_api: Arc<LolApi>,
 }

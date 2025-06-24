@@ -7,6 +7,7 @@ use crate::riot::{
     types::{LeaguePoints, Region, RiotApiResponse},
 };
 
+#[derive(Debug)]
 pub struct LeagueV4Api(Arc<ApiClient>);
 
 impl LeagueV4Api {

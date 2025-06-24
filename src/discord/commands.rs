@@ -1,15 +1,8 @@
 use poise::serenity_prelude::ChannelType;
-use reqwest::StatusCode;
 use tokio::sync::oneshot;
 use tracing::{debug, info};
 
-use crate::{
-    db::DbRequest,
-    riot::{
-        types::{Region, RiotApiError},
-        LolApiRequest,
-    },
-};
+use crate::{db::DbRequest, riot::types::Region};
 
 use super::{serenity, Context, Error};
 
@@ -43,36 +36,13 @@ pub async fn track(
     enter_command_log("track");
 
     debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
-    let (tx, rx) = oneshot::channel();
-    ctx.data()
-        .api_sender
-        .send(LolApiRequest::PuuidByAccountId {
-            game_name: game_name.clone(),
-            tag_line: tag.clone(),
-            respond_to: tx,
-        })
+
+    let account_data = ctx
+        .data()
+        .lol_api
+        .client
+        .get_account_by_riot_id(game_name.clone(), tag.clone())
         .await?;
-
-    let account_data = match rx.await? {
-        Ok(account_data) => {
-            debug!("[CMD] PUUID lookup response: {:?}", account_data);
-            account_data
-        }
-        Err(err) => {
-            tracing::error!("[CMD] Riot API error while getting account: {:?}", err);
-
-            match err {
-                RiotApiError::Status(StatusCode::NOT_FOUND) => ctx
-                    .say("❌ Player not found on Riot servers. Please try with another summoner name/tag.")
-                    .await?,
-                _ => ctx
-                    .say("❌ Something went wrong during summoner API request.")
-                    .await?,
-            };
-
-            return Ok(());
-        }
-    };
 
     debug!("[CMD] storing tracking data in DB");
     let (tx, rx) = oneshot::channel();
@@ -111,33 +81,12 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
     };
 
     debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
-    let (tx, rx) = oneshot::channel();
-    ctx.data()
-        .api_sender
-        .send(LolApiRequest::PuuidByAccountId {
-            game_name: game_name.clone(),
-            tag_line: tag.clone(),
-            respond_to: tx,
-        })
+    let account_data = ctx
+        .data()
+        .lol_api
+        .client
+        .get_account_by_riot_id(game_name.clone(), tag.clone())
         .await?;
-
-    let account_data = match rx.await? {
-        Ok(account_data) => account_data,
-        Err(err) => {
-            tracing::error!("[CMD] Riot API error while getting account: {:?}", err);
-
-            match err {
-                RiotApiError::Status(StatusCode::NOT_FOUND) => ctx
-                    .say("❌ Player not found on Riot servers. Please try with another summoner name/tag.")
-                    .await?,
-                _ => ctx
-                    .say("❌ Something went wrong during summoner API request.")
-                    .await?,
-            };
-
-            return Ok(());
-        }
-    };
 
     let (tx, rx) = oneshot::channel();
     ctx.data()

@@ -1,7 +1,9 @@
 use super::{
-    api::types::{LeagueEntryDto, MatchDto},
+    api::{
+        types::{LeagueEntryDto, MatchDto},
+        LolApi,
+    },
     types::{LeaguePoints, Region},
-    LolApiRequest,
 };
 use crate::{
     db::{types::Account, DbRequest},
@@ -10,13 +12,13 @@ use crate::{
 };
 use futures::{stream, StreamExt};
 use poise::serenity_prelude::Timestamp;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
 pub struct ResultPoller {
-    api_sender: mpsc::Sender<LolApiRequest>,
+    lol_api: Arc<LolApi>,
     db_sender: mpsc::Sender<DbRequest>,
     bot_sender: AlertSenderTx,
     start_time: u64,
@@ -25,13 +27,13 @@ pub struct ResultPoller {
 
 impl ResultPoller {
     pub fn new(
-        api_sender: mpsc::Sender<LolApiRequest>,
+        lol_api: Arc<LolApi>,
         db_sender: mpsc::Sender<DbRequest>,
         bot_sender: AlertSenderTx,
         poll_interval: Duration,
     ) -> Self {
         Self {
-            api_sender,
+            lol_api,
             db_sender,
             bot_sender,
             start_time: Timestamp::now().timestamp_millis() as u64,
@@ -211,27 +213,11 @@ impl ResultPoller {
     }
 
     async fn get_new_match_id(&self, puuid: String, region: Region) -> Option<String> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self
-            .api_sender
-            .send(LolApiRequest::LastMatch {
-                puuid,
-                region,
-                respond_to: tx,
-            })
-            .await
-        {
-            error!("Failed to send API request: {}", e);
-            return None;
-        }
-        match rx.await {
-            Ok(Ok(maybe_id)) => maybe_id,
-            Ok(Err(err)) => {
-                error!("Riot API error while fetching last match id: {:?}", err);
-                None
-            }
+        let request = self.lol_api.match_v5.get_last_match_id(puuid, region).await;
+        match request {
+            Ok(maybe_id) => maybe_id,
             Err(e) => {
-                error!("API channel error: {}", e);
+                error!("Riot API error while fetching last match id: {:?}", e);
                 None
             }
         }
@@ -278,28 +264,11 @@ impl ResultPoller {
     }
 
     async fn get_match_data(&self, match_id: String, region: Region) -> Option<MatchDto> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self
-            .api_sender
-            .send(LolApiRequest::LastMatchData {
-                match_id,
-                region,
-                respond_to: tx,
-            })
-            .await
-        {
-            error!("Failed to send API request: {}", e);
-            return None;
-        }
-
-        match rx.await {
-            Ok(Ok(match_data)) => Some(match_data),
-            Ok(Err(err)) => {
-                error!("Riot API error while fetching match data: {:?}", err);
-                None
-            }
+        let request = self.lol_api.match_v5.get_match(match_id, region).await;
+        match request {
+            Ok(m) => Some(m),
             Err(e) => {
-                error!("API channel error: {}", e);
+                error!("Riot API error while fetching last match: {:?}", e);
                 None
             }
         }
@@ -310,31 +279,13 @@ impl ResultPoller {
         puuid: String,
         region: Region,
     ) -> Option<LeagueEntryDto> {
-        let (tx, rx) = oneshot::channel();
-
-        if let Err(e) = self
-            .api_sender
-            .send(LolApiRequest::Leagues {
-                puuid,
-                region,
-                respond_to: tx,
-            })
-            .await
-        {
-            error!("Failed to send API request: {}", e);
-            return None;
-        }
-
-        let leagues = match rx.await {
-            Ok(Ok(leagues)) => leagues,
-            Ok(Err(err)) => {
-                error!("Riot API error while fetching leagues: {:?}", err);
-                return None;
-            }
+        let request = self.lol_api.league_v4.get_leagues(puuid, region).await;
+        let leagues = match request {
+            Ok(l) => l,
             Err(e) => {
-                error!("API channel error: {}", e);
-                return None;
-            }
+                error!("Riot API error while fetching last match: {:?}", e);
+                None
+            }?,
         };
 
         leagues

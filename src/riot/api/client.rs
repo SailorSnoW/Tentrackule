@@ -1,4 +1,4 @@
-use std::{fmt::Debug, sync::Arc};
+use std::{env, fmt::Debug, sync::Arc};
 
 use governor::{
     clock::DefaultClock,
@@ -13,23 +13,26 @@ use crate::riot::types::{RiotApiError, RiotApiResponse};
 
 use super::metrics::RequestMetrics;
 
+#[derive(Debug)]
 pub struct ApiClient {
     pub client: reqwest::Client,
     pub limiter: RateLimiter<NotKeyed, InMemoryState, DefaultClock>,
     /// Riot API Key
     key: String,
-    metrics: Arc<RequestMetrics>,
+    pub metrics: Arc<RequestMetrics>,
 }
 
 impl ApiClient {
-    pub fn new(key: String, metrics: Arc<RequestMetrics>) -> Self {
+    pub fn new() -> Self {
         let q = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
+        let key = env::var("RIOT_API_KEY")
+            .expect("A Riot API Key must be set in environment to create the API Client.");
 
         Self {
             client: reqwest::Client::new(),
             limiter: RateLimiter::direct(q),
             key,
-            metrics,
+            metrics: RequestMetrics::new(),
         }
     }
 
@@ -37,6 +40,8 @@ impl ApiClient {
     const ACCOUNT_ROUTE: &'static str = "https://europe.api.riotgames.com/riot/account/v1/accounts";
 
     pub async fn request<T: DeserializeOwned + Debug>(&self, path: String) -> RiotApiResponse<T> {
+        // Ensure we do not enforce the RIOT API rate limits before doing any request
+        self.limiter.until_ready().await;
         self.metrics.inc();
 
         let res = self
@@ -84,21 +89,12 @@ pub struct AccountDto {
 
 #[cfg(test)]
 mod tests {
-    use dotenv::dotenv;
-
     use super::ApiClient;
-    use crate::riot::api::metrics::RequestMetrics;
-
-    fn api_key() -> String {
-        dotenv().ok();
-        std::env::var("RIOT_API_KEY").unwrap()
-    }
 
     #[tokio::test]
     #[ignore = "API Key required"]
     async fn get_account_by_riot_id_works() {
-        let metrics = RequestMetrics::new();
-        let client = ApiClient::new(api_key(), metrics);
+        let client = ApiClient::new();
 
         let account = client
             .get_account_by_riot_id("Chalop".to_string(), "3012".to_string())
@@ -115,9 +111,7 @@ mod tests {
 
     #[tokio::test]
     async fn request_propagates_reqwest_error() {
-        let fake_key = "RGAPI-INVALID-KEY".to_string();
-        let metrics = super::super::metrics::RequestMetrics::new();
-        let client = super::ApiClient::new(fake_key, metrics);
+        let client = super::ApiClient::new();
 
         let bad_url = "ht!tp://invalid-url".to_string(); // incorrect schema
 

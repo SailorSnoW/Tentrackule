@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+#[derive(Debug)]
 pub struct RequestMetrics {
     start: Instant,
     count: AtomicU64,

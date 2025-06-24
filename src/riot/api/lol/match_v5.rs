@@ -8,6 +8,7 @@ use crate::riot::{
     types::{QueueType, Region, RiotApiResponse},
 };
 
+#[derive(Debug)]
 pub struct MatchV5Api(Arc<ApiClient>);
 
 impl MatchV5Api {

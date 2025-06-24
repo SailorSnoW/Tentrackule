@@ -13,6 +13,7 @@ pub use league_v4::LeagueV4Api;
 use match_v5::MatchDto;
 pub use match_v5::MatchV5Api;
 
+#[derive(Debug)]
 pub struct LolApi {
     pub client: Arc<ApiClient>,
     pub match_v5: MatchV5Api,
@@ -21,11 +22,19 @@ pub struct LolApi {
 
 impl LolApi {
     pub fn new(api_client: Arc<ApiClient>) -> Self {
-        Self {
+        let api = Self {
             client: api_client.clone(),
             match_v5: MatchV5Api::new(api_client.clone()),
             league_v4: LeagueV4Api::new(api_client),
-        }
+        };
+
+        // Start the metrics logger
+        let metrics = api.client.metrics.clone();
+        tokio::spawn(async move {
+            metrics.log_loop().await;
+        });
+
+        api
     }
 }
 
