@@ -9,7 +9,7 @@ use handler::event_handler;
 
 use crate::{db::DbRequest, riot::api::LolApi};
 
-pub use alert_sender::{AlertSender, AlertSenderMessage, AlertSenderTx};
+pub use alert_sender::AlertSender;
 
 mod alert_sender;
 mod commands;

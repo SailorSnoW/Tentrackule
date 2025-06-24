@@ -7,7 +7,7 @@ use super::{
 };
 use crate::{
     db::{types::Account, DbRequest},
-    discord::{AlertSenderMessage, AlertSenderTx},
+    discord::AlertSender,
     riot::{api::types::MatchDtoWithLeagueInfo, types::QueueType},
 };
 use futures::{stream, StreamExt};
@@ -20,7 +20,7 @@ use tracing::{debug, error, info, warn};
 pub struct ResultPoller {
     lol_api: Arc<LolApi>,
     db_sender: mpsc::Sender<DbRequest>,
-    bot_sender: AlertSenderTx,
+    alert_sender: AlertSender,
     start_time: u64,
     poll_interval: Duration,
 }
@@ -29,13 +29,13 @@ impl ResultPoller {
     pub fn new(
         lol_api: Arc<LolApi>,
         db_sender: mpsc::Sender<DbRequest>,
-        bot_sender: AlertSenderTx,
+        alert_sender: AlertSender,
         poll_interval: Duration,
     ) -> Self {
         Self {
             lol_api,
             db_sender,
-            bot_sender,
+            alert_sender,
             start_time: Timestamp::now().timestamp_millis() as u64,
             poll_interval,
         }
@@ -165,16 +165,11 @@ impl ResultPoller {
                     "📢 [POLL] dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
-                let _ = self
-                    .bot_sender
-                    .send(AlertSenderMessage::DispatchNewAlert {
-                        puuid: account.puuid,
-                        match_data: MatchDtoWithLeagueInfo::new(
-                            match_data,
-                            league,
-                            cached_league_points,
-                        ),
-                    })
+                self.alert_sender
+                    .dispatch_alert(
+                        &account.puuid,
+                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league_points),
+                    )
                     .await;
             }
             QueueType::NormalDraft => {
@@ -182,12 +177,11 @@ impl ResultPoller {
                     "📢 [POLL] dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
-                let _ = self
-                    .bot_sender
-                    .send(AlertSenderMessage::DispatchNewAlert {
-                        puuid: account.puuid,
-                        match_data: MatchDtoWithLeagueInfo::new(match_data, None, None),
-                    })
+                self.alert_sender
+                    .dispatch_alert(
+                        &account.puuid,
+                        MatchDtoWithLeagueInfo::new(match_data, None, None),
+                    )
                     .await;
             }
             QueueType::Aram => {
@@ -195,12 +189,11 @@ impl ResultPoller {
                     "📢 [POLL] dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
-                let _ = self
-                    .bot_sender
-                    .send(AlertSenderMessage::DispatchNewAlert {
-                        puuid: account.puuid,
-                        match_data: MatchDtoWithLeagueInfo::new(match_data, None, None),
-                    })
+                self.alert_sender
+                    .dispatch_alert(
+                        &account.puuid,
+                        MatchDtoWithLeagueInfo::new(match_data, None, None),
+                    )
                     .await;
             }
             QueueType::Unhandled => {

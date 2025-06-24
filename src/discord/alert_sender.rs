@@ -3,54 +3,24 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 use tokio::sync::oneshot;
-use tracing::{error, info, warn};
+use tracing::{error, warn};
 
 use crate::db::DbRequest;
 use crate::riot::api::types::MatchDtoWithLeagueInfo;
 
 use super::*;
 
-pub type AlertSenderRx = mpsc::Receiver<AlertSenderMessage>;
-pub type AlertSenderTx = mpsc::Sender<AlertSenderMessage>;
-
 pub struct AlertSender {
     ctx: Arc<serenity::Http>,
-    receiver: AlertSenderRx,
     db_sender: mpsc::Sender<DbRequest>,
 }
 
 impl AlertSender {
-    pub fn new(
-        receiver: AlertSenderRx,
-        ctx: Arc<serenity::Http>,
-        db_sender: mpsc::Sender<DbRequest>,
-    ) -> Self {
-        Self {
-            receiver,
-            ctx,
-            db_sender,
-        }
+    pub fn new(ctx: Arc<serenity::Http>, db_sender: mpsc::Sender<DbRequest>) -> Self {
+        Self { ctx, db_sender }
     }
 
-    pub fn start(mut self) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            self.run().await;
-        })
-    }
-
-    async fn run(&mut self) {
-        info!("📢 [ALERT] sender started");
-
-        while let Some(request) = self.receiver.recv().await {
-            match request {
-                AlertSenderMessage::DispatchNewAlert { puuid, match_data } => {
-                    self.dispatch_alert(&puuid, match_data).await;
-                }
-            }
-        }
-    }
-
-    async fn dispatch_alert(&self, puuid: &str, match_data: MatchDtoWithLeagueInfo) {
+    pub async fn dispatch_alert(&self, puuid: &str, match_data: MatchDtoWithLeagueInfo) {
         let alert = match match_data.into_embed(puuid) {
             Ok(alert) => alert,
             Err(reason) => {
@@ -118,12 +88,4 @@ impl AlertSender {
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub enum AlertSenderMessage {
-    DispatchNewAlert {
-        puuid: String,
-        match_data: MatchDtoWithLeagueInfo,
-    },
 }
