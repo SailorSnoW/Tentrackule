@@ -7,7 +7,7 @@ use tracing::{error, info};
 
 use handler::event_handler;
 
-use crate::{db::DbRequest, riot::ApiRequest};
+use crate::{db::DbRequest, riot::LolApiRequest};
 
 pub use alert_sender::{AlertSender, AlertSenderMessage, AlertSenderTx};
 
@@ -28,7 +28,7 @@ pub struct DiscordBot {
 impl DiscordBot {
     pub async fn new(
         db_sender: mpsc::Sender<DbRequest>,
-        api_sender: mpsc::Sender<ApiRequest>,
+        api_sender: mpsc::Sender<LolApiRequest>,
     ) -> Self {
         let token =
             env::var("DISCORD_BOT_TOKEN").expect("Expected a discord bot token in the environment");
@@ -86,5 +86,5 @@ impl DiscordBot {
 #[derive(Debug)]
 pub struct Data {
     db_sender: mpsc::Sender<DbRequest>,
-    api_sender: mpsc::Sender<ApiRequest>,
+    api_sender: mpsc::Sender<LolApiRequest>,
 }

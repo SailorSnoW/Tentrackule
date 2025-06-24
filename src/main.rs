@@ -3,7 +3,7 @@ use std::{env, time::Duration};
 use db::DatabaseHandler;
 use discord::{AlertSender, DiscordBot};
 use dotenv::dotenv;
-use riot::{result_poller::ResultPoller, RiotApiHandler};
+use riot::{result_poller::ResultPoller, LolApiHandler};
 use tokio::sync::mpsc;
 use tracing::info;
 
@@ -20,8 +20,8 @@ async fn main() {
     info!("🚀 [MAIN] Tentrackule starting");
 
     let db = DatabaseHandler::new();
-    let api = RiotApiHandler::new();
-    let bot = DiscordBot::new(db.sender_cloned(), api.sender_cloned()).await;
+    let lol_api = LolApiHandler::new();
+    let bot = DiscordBot::new(db.sender_cloned(), lol_api.sender_cloned()).await;
 
     let poll_interval = env::var("POLL_INTERVAL_SECONDS")
         .ok()
@@ -31,8 +31,12 @@ async fn main() {
 
     let (tx, rx) = mpsc::channel(100);
     let alert_sender_handler = AlertSender::new(rx, bot.client.http.clone(), db.sender_cloned());
-    let result_poller_handle =
-        ResultPoller::new(api.sender_cloned(), db.sender_cloned(), tx, poll_interval);
+    let result_poller_handle = ResultPoller::new(
+        lol_api.sender_cloned(),
+        db.sender_cloned(),
+        tx,
+        poll_interval,
+    );
 
     tokio::select! {
         res = db.start() => {
@@ -41,10 +45,10 @@ async fn main() {
                 Err(e) => panic!("The DatabaseHandler crashed: {:?}", e),
             }
         },
-        res = api.start() => {
+        res = lol_api.start() => {
             match res {
                 Ok(()) => unreachable!(),
-                Err(e) => panic!("The RiotApiHandler crashed: {:?}", e),
+                Err(e) => panic!("The LoLApiHandler crashed: {:?}", e),
             }
         },
         res = bot.start() => {

@@ -1,7 +1,10 @@
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use thiserror::Error;
 
-use crate::riot::types::{MatchDtoWithLeagueInfo, ParticipantDto, QueueType};
+use crate::riot::{
+    api::types::{MatchDtoWithLeagueInfo, ParticipantDto},
+    types::QueueType,
+};
 
 #[derive(Error, Debug)]
 pub enum EmbedCreationError {
@@ -129,8 +132,9 @@ fn create_aram_alert_msg(
 
 #[cfg(test)]
 mod tests {
+    use crate::riot::api::types::{InfoDto, LeagueEntryDto, MatchDto};
+
     use super::*;
-    use crate::riot::types::{InfoDto, LeagueEntryDto, MatchDto, ParticipantDto};
 
     fn sample_participant(puuid: &str) -> ParticipantDto {
         ParticipantDto {

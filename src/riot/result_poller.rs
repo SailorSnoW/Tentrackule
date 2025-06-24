@@ -1,11 +1,12 @@
 use super::{
-    types::{LeagueEntryDto, LeaguePoints, MatchDto, Region},
-    ApiRequest,
+    api::types::{LeagueEntryDto, MatchDto},
+    types::{LeaguePoints, Region},
+    LolApiRequest,
 };
 use crate::{
     db::{types::Account, DbRequest},
     discord::{AlertSenderMessage, AlertSenderTx},
-    riot::types::{MatchDtoWithLeagueInfo, QueueType},
+    riot::{api::types::MatchDtoWithLeagueInfo, types::QueueType},
 };
 use futures::{stream, StreamExt};
 use poise::serenity_prelude::Timestamp;
@@ -15,7 +16,7 @@ use tracing::{debug, error, info, warn};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
 pub struct ResultPoller {
-    api_sender: mpsc::Sender<ApiRequest>,
+    api_sender: mpsc::Sender<LolApiRequest>,
     db_sender: mpsc::Sender<DbRequest>,
     bot_sender: AlertSenderTx,
     start_time: u64,
@@ -24,7 +25,7 @@ pub struct ResultPoller {
 
 impl ResultPoller {
     pub fn new(
-        api_sender: mpsc::Sender<ApiRequest>,
+        api_sender: mpsc::Sender<LolApiRequest>,
         db_sender: mpsc::Sender<DbRequest>,
         bot_sender: AlertSenderTx,
         poll_interval: Duration,
@@ -213,7 +214,7 @@ impl ResultPoller {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self
             .api_sender
-            .send(ApiRequest::LastMatch {
+            .send(LolApiRequest::LastMatch {
                 puuid,
                 region,
                 respond_to: tx,
@@ -280,7 +281,7 @@ impl ResultPoller {
         let (tx, rx) = oneshot::channel();
         if let Err(e) = self
             .api_sender
-            .send(ApiRequest::LastMatchData {
+            .send(LolApiRequest::LastMatchData {
                 match_id,
                 region,
                 respond_to: tx,
@@ -313,7 +314,7 @@ impl ResultPoller {
 
         if let Err(e) = self
             .api_sender
-            .send(ApiRequest::Leagues {
+            .send(LolApiRequest::Leagues {
                 puuid,
                 region,
                 respond_to: tx,

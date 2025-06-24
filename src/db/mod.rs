@@ -7,7 +7,10 @@ use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info};
 use types::Account;
 
-use crate::riot::types::{AccountDto, LeaguePoints, QueueType, Region};
+use crate::riot::{
+    api::types::AccountDto,
+    types::{LeaguePoints, QueueType, Region},
+};
 
 pub mod types;
 
@@ -425,7 +428,7 @@ pub fn get_guilds_for_puuid(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::riot::types::{AccountDto, Region};
+    use crate::riot::types::Region;
     use poise::serenity_prelude::{ChannelId, GuildId};
 
     fn setup_connection() -> Connection {

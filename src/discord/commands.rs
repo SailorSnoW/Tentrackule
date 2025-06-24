@@ -7,7 +7,7 @@ use crate::{
     db::DbRequest,
     riot::{
         types::{Region, RiotApiError},
-        ApiRequest,
+        LolApiRequest,
     },
 };
 
@@ -46,7 +46,7 @@ pub async fn track(
     let (tx, rx) = oneshot::channel();
     ctx.data()
         .api_sender
-        .send(ApiRequest::PuuidByAccountId {
+        .send(LolApiRequest::PuuidByAccountId {
             game_name: game_name.clone(),
             tag_line: tag.clone(),
             respond_to: tx,
@@ -114,7 +114,7 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
     let (tx, rx) = oneshot::channel();
     ctx.data()
         .api_sender
-        .send(ApiRequest::PuuidByAccountId {
+        .send(LolApiRequest::PuuidByAccountId {
             game_name: game_name.clone(),
             tag_line: tag.clone(),
             respond_to: tx,

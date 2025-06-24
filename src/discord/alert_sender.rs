@@ -6,7 +6,7 @@ use tokio::sync::oneshot;
 use tracing::{error, info, warn};
 
 use crate::db::DbRequest;
-use crate::riot::types::MatchDtoWithLeagueInfo;
+use crate::riot::api::types::MatchDtoWithLeagueInfo;
 
 use super::*;
 

@@ -1,34 +1,39 @@
 use std::{env, sync::Arc};
 
-use client::RiotClient;
+use api::{
+    client::{AccountDto, ApiClient},
+    metrics::RequestMetrics,
+    types::{LeagueEntryDto, MatchDto},
+    LolApi,
+};
 use tokio::sync::{mpsc, oneshot};
 use tracing::info;
-use types::{AccountDto, LeagueEntryDto, MatchDto, Region, RiotApiResponse};
+use types::{Region, RiotApiResponse};
 
-mod client;
-mod metrics;
+pub mod api;
 pub mod result_poller;
 pub mod types;
 
-pub type RiotApiRx = mpsc::Receiver<ApiRequest>;
-pub type RiotApiTx = mpsc::Sender<ApiRequest>;
+pub type LolApiRx = mpsc::Receiver<LolApiRequest>;
+pub type LolApiTx = mpsc::Sender<LolApiRequest>;
 
-pub struct RiotApiHandler {
-    client: RiotClient,
-    sender: RiotApiTx,
-    receiver: RiotApiRx,
-    metrics: Arc<metrics::RequestMetrics>,
+pub struct LolApiHandler {
+    api: LolApi,
+    sender: LolApiTx,
+    receiver: LolApiRx,
+    metrics: Arc<RequestMetrics>,
 }
 
-impl RiotApiHandler {
+impl LolApiHandler {
     pub fn new() -> Self {
         let (tx, rx) = mpsc::channel(100);
         let key = env::var("RIOT_API_KEY")
             .expect("A Riot API Key must be set in environment to create the API Client.");
-        let metrics = metrics::RequestMetrics::new();
+        let metrics = RequestMetrics::new();
+        let api_client = ApiClient::new(key, metrics.clone());
 
         Self {
-            client: RiotClient::new(key, metrics.clone()),
+            api: LolApi::new(api_client.into()),
             sender: tx,
             receiver: rx,
             metrics,
@@ -46,58 +51,60 @@ impl RiotApiHandler {
         })
     }
 
-    pub fn sender_cloned(&self) -> RiotApiTx {
+    pub fn sender_cloned(&self) -> LolApiTx {
         self.sender.clone()
     }
 
     async fn run(mut self) {
-        info!("🛰️ [RIOT] API handler started");
+        info!("🛰️ [LoL] API handler started");
 
         while let Some(request) = self.receiver.recv().await {
             // Ensure we do not enforce the RIOT API rate limits before doing any request
-            self.client.limiter.until_ready().await;
+            self.api.client.limiter.until_ready().await;
 
             match request {
-                ApiRequest::PuuidByAccountId {
+                LolApiRequest::PuuidByAccountId {
                     game_name,
                     tag_line,
                     respond_to,
                 } => {
                     let account_data = self
+                        .api
                         .client
                         .get_account_by_riot_id(game_name, tag_line)
                         .await;
                     let _ = respond_to.send(account_data);
                 }
-                ApiRequest::LastMatch {
+                LolApiRequest::LastMatch {
                     puuid,
                     region,
                     respond_to,
                 } => {
-                    let _ = respond_to.send(self.client.get_last_match_id(puuid, region).await);
+                    let _ =
+                        respond_to.send(self.api.match_v5.get_last_match_id(puuid, region).await);
                 }
-                ApiRequest::LastMatchData {
+                LolApiRequest::LastMatchData {
                     match_id,
                     region,
                     respond_to,
                 } => {
-                    let _ = respond_to.send(self.client.get_match(match_id, region).await);
+                    let _ = respond_to.send(self.api.match_v5.get_match(match_id, region).await);
                 }
-                ApiRequest::Leagues {
+                LolApiRequest::Leagues {
                     puuid,
                     region,
                     respond_to,
                 } => {
-                    let _ = respond_to.send(self.client.get_leagues(puuid, region).await);
+                    let _ = respond_to.send(self.api.league_v4.get_leagues(puuid, region).await);
                 }
             }
         }
     }
 }
 
-/// MPSC Messages to communicate with the Riot API Task.
+/// MPSC Messages to communicate with the LoL API Task.
 #[derive(Debug)]
-pub enum ApiRequest {
+pub enum LolApiRequest {
     PuuidByAccountId {
         game_name: String,
         tag_line: String,
