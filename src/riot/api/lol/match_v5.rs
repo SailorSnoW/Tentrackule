@@ -2,6 +2,7 @@ use std::{env, sync::Arc};
 
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
+use urlencoding::encode;
 
 use crate::riot::{
     api::client::ApiClient,
@@ -134,7 +135,8 @@ impl ParticipantDto {
     pub fn to_dpm_profile_url(&self) -> String {
         format!(
             "https://dpm.lol/{}-{}",
-            self.riot_id_game_name, self.riot_id_tagline
+            encode(&self.riot_id_game_name),
+            encode(&self.riot_id_tagline)
         )
     }
     pub fn to_title_win_string(&self, lp_info: Option<i16>) -> String {
@@ -245,5 +247,18 @@ mod tests {
             p.to_champion_picture_url(),
             "https://ddragon.leagueoflegends.com/cdn/15.12.1/img/champion/Fiddlesticks.png"
         );
+    }
+
+    #[tokio::test]
+    #[ignore = "API Key required"]
+    async fn get_match_data_works() {
+        let client = ApiClient::new();
+        let api = MatchV5Api::new(client.into());
+
+        let test_match = "EUW1_7442220067".to_string();
+        let match_data = api.get_match(test_match, Region::Euw).await.unwrap();
+
+        assert_eq!(match_data.info.queue_id, 450);
+        assert_eq!(match_data.queue_type(), QueueType::Aram)
     }
 }
