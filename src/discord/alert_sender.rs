@@ -1,23 +1,20 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tokio::sync::mpsc;
-use tokio::sync::oneshot;
 use tracing::{error, warn};
 
-use crate::db::DbRequest;
-use crate::riot::api::types::MatchDtoWithLeagueInfo;
+use crate::{db::DatabaseExt, riot::api::types::MatchDtoWithLeagueInfo};
 
 use super::*;
 
 pub struct AlertSender {
     ctx: Arc<serenity::Http>,
-    db_sender: mpsc::Sender<DbRequest>,
+    db: SharedDatabase,
 }
 
 impl AlertSender {
-    pub fn new(ctx: Arc<serenity::Http>, db_sender: mpsc::Sender<DbRequest>) -> Self {
-        Self { ctx, db_sender }
+    pub fn new(ctx: Arc<serenity::Http>, db: SharedDatabase) -> Self {
+        Self { ctx, db }
     }
 
     pub async fn dispatch_alert(&self, puuid: &str, match_data: MatchDtoWithLeagueInfo) {
@@ -56,32 +53,11 @@ impl AlertSender {
     }
 
     async fn get_guilds_for_account(&self, puuid: String) -> HashMap<GuildId, Option<ChannelId>> {
-        let (tx, rx) = oneshot::channel();
-
-        if let Err(e) = self
-            .db_sender
-            .send(DbRequest::GetGuildsForAccount {
-                puuid,
-                respond_to: tx,
-            })
-            .await
-        {
-            error!("❌ [ALERT] failed to send DB request: {}", e);
-            return HashMap::new();
-        }
-
-        match rx.await {
-            Ok(Ok(guilds)) => guilds,
-            Ok(Err(e)) => {
-                error!(
-                    "❌ [ALERT] DB error while getting guilds for account: {}",
-                    e
-                );
-                HashMap::new()
-            }
+        match self.db.run(|db| db.get_guilds_for_puuid(puuid)).await {
+            Ok(x) => x,
             Err(e) => {
                 error!(
-                    "❌ [ALERT] DB request cancelled while getting guilds for account: {}",
+                    "❌ [ALERT] DB error while getting guilds for account: {}",
                     e
                 );
                 HashMap::new()

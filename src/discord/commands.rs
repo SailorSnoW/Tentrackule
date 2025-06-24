@@ -1,8 +1,7 @@
 use poise::serenity_prelude::ChannelType;
-use tokio::sync::oneshot;
 use tracing::{debug, info};
 
-use crate::{db::DbRequest, riot::types::Region};
+use crate::{db::DatabaseExt, riot::types::Region};
 
 use super::{serenity, Context, Error};
 
@@ -35,6 +34,10 @@ pub async fn track(
 ) -> Result<(), Error> {
     enter_command_log("track");
 
+    let Some(guild_id) = require_guild(&ctx).await else {
+        return Ok(());
+    };
+
     debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
 
     let account_data = ctx
@@ -45,23 +48,18 @@ pub async fn track(
         .await?;
 
     debug!("[CMD] storing tracking data in DB");
-    let (tx, rx) = oneshot::channel();
-    ctx.data()
-        .db_sender
-        .send(DbRequest::TrackNewAccount {
-            account_data,
-            guild_id: ctx.guild_id().expect("Is run from a guild"),
-            region,
-            respond_to: tx,
-        })
-        .await?;
 
-    if let Err(e) = rx.await? {
+    if let Err(e) = ctx
+        .data()
+        .db
+        .run(move |db| db.track_new_account(account_data, region, guild_id))
+        .await
+    {
         tracing::error!("[CMD] DB error while tracking player: {}", e);
         ctx.say("❌ Internal Error: Something went wrong during database operations.")
             .await?;
         return Ok(());
-    };
+    }
 
     ctx.say(format!(
         "🎉 Successfully started to track new summoner: **{}#{}**",
@@ -88,22 +86,17 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
         .get_account_by_riot_id(game_name.clone(), tag.clone())
         .await?;
 
-    let (tx, rx) = oneshot::channel();
-    ctx.data()
-        .db_sender
-        .send(DbRequest::UntrackAccount {
-            puuid: account_data.puuid.clone(),
-            guild_id,
-            respond_to: tx,
-        })
-        .await?;
-
-    if let Err(e) = rx.await? {
+    if let Err(e) = ctx
+        .data()
+        .db
+        .run(move |db| db.untrack_account(account_data.puuid, guild_id))
+        .await
+    {
         tracing::error!("[CMD] DB error while untracking player: {}", e);
         ctx.say("❌ Internal Error: Something went wrong during database operations.")
             .await?;
         return Ok(());
-    };
+    }
 
     ctx.say(format!(
         "🗑️ Successfully stopped tracking summoner: **{}#{}**",
@@ -122,16 +115,12 @@ pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
 
-    let (tx, rx) = oneshot::channel();
-    ctx.data()
-        .db_sender
-        .send(DbRequest::GetAllAccountsForGuild {
-            guild_id,
-            respond_to: tx,
-        })
-        .await?;
-
-    let response = match rx.await? {
+    let response = match ctx
+        .data()
+        .db
+        .run(move |db| db.get_guild_accounts(guild_id))
+        .await
+    {
         Ok(accounts) => {
             let mut s: String = "Currently Tracked:\n".to_owned();
             for account in accounts {
@@ -169,17 +158,12 @@ pub async fn set_alert_channel(
         return Ok(());
     };
 
-    let (tx, rx) = oneshot::channel();
-    ctx.data()
-        .db_sender
-        .send(DbRequest::SetAlertChannel {
-            guild_id,
-            channel_id: channel.id,
-            respond_to: tx,
-        })
-        .await?;
-
-    if let Err(e) = rx.await? {
+    if let Err(e) = ctx
+        .data()
+        .db
+        .run(move |db| db.set_alert_channel(guild_id, channel.id))
+        .await
+    {
         tracing::error!("[CMD] DB error while setting alert channel: {}", e);
         ctx.say("❌ Internal Error: Couldn't update alert channel.")
             .await?;
@@ -203,26 +187,26 @@ pub async fn current_alert_channel(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
 
-    let (tx, rx) = oneshot::channel();
-    ctx.data()
-        .db_sender
-        .send(DbRequest::GetAlertChannel {
-            guild_id,
-            respond_to: tx,
-        })
-        .await?;
-
-    let response = match rx.await? {
-        Some(channel_id) => {
+    let response = match ctx
+        .data()
+        .db
+        .run(move |db| db.get_alert_channel(guild_id))
+        .await
+    {
+        Ok(Some(channel_id)) => {
             let channel = channel_id
                 .to_channel(ctx)
                 .await
                 .expect("Can retrieve channel informations");
             format!("Current alert channel for this server: {}", channel)
         }
-        None => {
+        Ok(None) => {
             "Alert channel isn't set for this server. You can set it with `/set_alert_channel`."
                 .to_string()
+        }
+        Err(e) => {
+            tracing::error!("[CMD] DB query error: {}", e);
+            "❌ Internal Error: Couldn't the alert channel for this server.".to_string()
         }
     };
 

@@ -22,14 +22,15 @@ caching useful information and only calling the API when required.
 
 ## 🏗 Architecture Overview
 
-Tentrackule is split into a few asynchronous tasks which communicate through
-message channels:
+Tentrackule is split into a few asynchronous tasks. These tasks share access to
+a `SharedDatabase` (`Arc<Mutex<Database>>`) and perform blocking queries via the
+`DatabaseExt::run` helper:
 
 1. **Discord Bot** – exposes slash commands via Poise and sends alerts to your
    server.
-2. **Database Handler** – wraps an SQLite database for storing tracked accounts
+2. **Database** – wraps an SQLite database for storing tracked accounts
    and guild settings.
-3. **Riot API Handler** – performs requests to Riot while respecting rate limits
+3. **Riot API** – performs requests to Riot while respecting rate limits
    and collects simple metrics.
 4. **Result Poller** – periodically checks for new matches and dispatches alerts
    when a tracked player finishes a game.

@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use db::DatabaseHandler;
+use db::Database;
 use discord::{AlertSender, DiscordBot};
 use dotenv::dotenv;
 use riot::{
@@ -21,20 +21,14 @@ async fn main() {
 
     info!("🚀 [MAIN] Tentrackule starting");
 
-    let db = DatabaseHandler::new();
+    let db = Database::new_shared();
 
     let lol_api: Arc<LolApi> = LolApi::new(ApiClient::new().into()).into();
-    let bot = DiscordBot::new(db.sender_cloned(), lol_api.clone()).await;
-    let alert_sender = AlertSender::new(bot.client.http.clone(), db.sender_cloned());
-    let result_poller = ResultPoller::new(lol_api.clone(), db.sender_cloned(), alert_sender);
+    let bot = DiscordBot::new(db.clone(), lol_api.clone()).await;
+    let alert_sender = AlertSender::new(bot.client.http.clone(), db.clone());
+    let result_poller = ResultPoller::new(lol_api.clone(), db, alert_sender);
 
     tokio::select! {
-        res = db.start() => {
-            match res {
-                Ok(()) => unreachable!(),
-                Err(e) => panic!("The DatabaseHandler crashed: {:?}", e),
-            }
-        },
         res = bot.start() => {
             match res {
                 Ok(()) => unreachable!(),

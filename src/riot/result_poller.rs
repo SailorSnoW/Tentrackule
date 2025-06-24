@@ -6,7 +6,7 @@ use super::{
     types::{LeaguePoints, Region},
 };
 use crate::{
-    db::{types::Account, DbRequest},
+    db::{types::Account, DatabaseExt, SharedDatabase},
     discord::AlertSender,
     riot::{api::types::MatchDtoWithLeagueInfo, types::QueueType},
 };
@@ -14,26 +14,20 @@ use dotenv::dotenv;
 use futures::{stream, StreamExt};
 use poise::serenity_prelude::Timestamp;
 use std::{env, sync::Arc, time::Duration};
-use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, error, info, warn};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
 pub struct ResultPoller {
     lol_api: Arc<LolApi>,
-    db_sender: mpsc::Sender<DbRequest>,
+    db: SharedDatabase,
     alert_sender: AlertSender,
     start_time: u64,
     poll_interval: Duration,
 }
 
 impl ResultPoller {
-    pub fn new(
-        lol_api: Arc<LolApi>,
-        db_sender: mpsc::Sender<DbRequest>,
-        alert_sender: AlertSender,
-    ) -> Self {
+    pub fn new(lol_api: Arc<LolApi>, db: SharedDatabase, alert_sender: AlertSender) -> Self {
         dotenv().ok();
-
         let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -42,7 +36,7 @@ impl ResultPoller {
 
         Self {
             lol_api,
-            db_sender,
+            db,
             alert_sender,
             start_time: Timestamp::now().timestamp_millis() as u64,
             poll_interval,
@@ -78,23 +72,10 @@ impl ResultPoller {
     }
 
     async fn get_all_accounts(&self) -> Vec<Account> {
-        let (tx, rx) = oneshot::channel();
-        if let Err(e) = self
-            .db_sender
-            .send(DbRequest::GetAllAccounts { respond_to: tx })
-            .await
-        {
-            error!("Failed to send DB request: {}", e);
-            return Vec::new();
-        }
-        match rx.await {
-            Ok(Ok(accounts)) => accounts,
-            Ok(Err(e)) => {
-                error!("Database error while fetching accounts: {}", e);
-                Vec::new()
-            }
+        match self.db.run(|db| db.get_all_accounts()).await {
+            Ok(accounts) => accounts,
             Err(e) => {
-                error!("DB channel error: {}", e);
+                error!("Database error while fetching accounts: {}", e);
                 Vec::new()
             }
         }
@@ -212,20 +193,13 @@ impl ResultPoller {
     }
 
     async fn store_new_match_id(&self, puuid: String, match_id: String) {
-        let (tx, rx) = oneshot::channel();
         if let Err(e) = self
-            .db_sender
-            .send(DbRequest::SetLastMatchId {
-                puuid,
-                match_id,
-                respond_to: tx,
-            })
+            .db
+            .run(|db| db.set_last_match_id(puuid, match_id))
             .await
         {
             error!("Failed to send DB request: {}", e);
-            return;
         }
-        let _ = rx.await;
     }
 
     async fn update_league_points(
@@ -234,21 +208,13 @@ impl ResultPoller {
         queue_type: QueueType,
         league_points: LeaguePoints,
     ) {
-        let (tx, rx) = oneshot::channel();
         if let Err(e) = self
-            .db_sender
-            .send(DbRequest::UpdateLeaguePoints {
-                puuid,
-                queue_type,
-                league_points,
-                respond_to: tx,
-            })
+            .db
+            .run(move |db| db.update_league_points(puuid, queue_type, league_points))
             .await
         {
             error!("Failed to send DB request: {}", e);
-            return;
         }
-        let _ = rx.await;
     }
 
     async fn fetch_match_data(&self, match_id: String, region: Region) -> Option<MatchDto> {
