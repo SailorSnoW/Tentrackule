@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tentrackule_bot::AlertSender;
+use tentrackule_bot::AlertDispatcher;
 use tentrackule_db::{types::Account, DatabaseExt, SharedDatabase};
 use tentrackule_riot_api::{
     api::{
@@ -19,13 +19,17 @@ use tracing::{debug, error, info, warn};
 pub struct ResultPoller {
     lol_api: Arc<LolApi>,
     db: SharedDatabase,
-    alert_sender: AlertSender,
+    alert_dispatcher: AlertDispatcher,
     start_time: u128,
     poll_interval: Duration,
 }
 
 impl ResultPoller {
-    pub fn new(lol_api: Arc<LolApi>, db: SharedDatabase, alert_sender: AlertSender) -> Self {
+    pub fn new(
+        lol_api: Arc<LolApi>,
+        db: SharedDatabase,
+        alert_dispatcher: AlertDispatcher,
+    ) -> Self {
         let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -35,7 +39,7 @@ impl ResultPoller {
         Self {
             lol_api,
             db,
-            alert_sender,
+            alert_dispatcher,
             start_time: SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .expect("Time went backwards")
@@ -154,7 +158,7 @@ impl ResultPoller {
                     "📢 [POLL] dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
-                self.alert_sender
+                self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
                         MatchDtoWithLeagueInfo::new(match_data, league, cached_league_points),
@@ -166,7 +170,7 @@ impl ResultPoller {
                     "📢 [POLL] dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
-                self.alert_sender
+                self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
                         MatchDtoWithLeagueInfo::new(match_data, None, None),

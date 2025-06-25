@@ -8,12 +8,12 @@ use tracing::{error, warn};
 
 use super::*;
 
-pub struct AlertSender {
+pub struct AlertDispatcher {
     sender: Arc<dyn MessageSender + Send + Sync>,
     db: SharedDatabase,
 }
 
-impl AlertSender {
+impl AlertDispatcher {
     pub fn new(sender: Arc<dyn MessageSender + Send + Sync>, db: SharedDatabase) -> Self {
         Self { sender, db }
     }
@@ -137,7 +137,8 @@ mod tests {
 
         let shared: SharedDatabase = Arc::new(TokioMutex::new(db));
         let mock = Arc::new(MockSender::default());
-        let sender = AlertSender::new(mock.clone() as Arc<dyn MessageSender + Send + Sync>, shared);
+        let sender =
+            AlertDispatcher::new(mock.clone() as Arc<dyn MessageSender + Send + Sync>, shared);
 
         sender.dispatch_alert("puuid", DummyAlert).await;
 

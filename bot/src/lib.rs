@@ -8,9 +8,9 @@ use tracing::{error, info};
 
 use handler::event_handler;
 
-pub use alert_sender::AlertSender;
+pub use alert_dispatcher::AlertDispatcher;
 
-mod alert_sender;
+mod alert_dispatcher;
 mod commands;
 mod handler;
 mod message_sender;
