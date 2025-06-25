@@ -59,18 +59,18 @@ impl DiscordBot {
         Self { client }
     }
 
-    pub fn start(self) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            self.run().await;
-        })
+    pub fn start(self) -> tokio::task::JoinHandle<Result<(), serenity::Error>> {
+        tokio::spawn(async move { self.run().await })
     }
 
-    async fn run(mut self) {
+    async fn run(mut self) -> Result<(), serenity::Error> {
         info!("🌐 [DISCORD] connecting to gateway");
         if let Err(why) = self.client.start().await {
             error!("❌ [DISCORD] connection failed: {why:?}");
-            panic!()
+            return Err(why);
         }
+
+        Ok(())
     }
 }
 

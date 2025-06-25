@@ -5,7 +5,7 @@ use result_poller::ResultPoller;
 use tentrackule_bot::{AlertSender, DiscordBot};
 use tentrackule_db::Database;
 use tentrackule_riot_api::api::{client::ApiClient, LolApi};
-use tracing::info;
+use tracing::{error, info};
 
 mod logging;
 mod result_poller;
@@ -27,14 +27,24 @@ async fn main() {
     tokio::select! {
         res = bot.start() => {
             match res {
-                Ok(()) => unreachable!(),
-                Err(e) => panic!("The discord bot task crashed: {:?}", e),
+                Ok(Ok(())) => unreachable!(),
+                Ok(Err(e)) => {
+                    error!("The discord bot task crashed: {:?}", e);
+                    return;
+                },
+                Err(e) => {
+                    error!("The discord bot task panicked: {:?}", e);
+                    return;
+                },
             }
         },
         res = result_poller.start() => {
             match res {
                 Ok(()) => unreachable!(),
-                Err(e) => panic!("The result poller crashed: {:?}", e),
+                Err(e) => {
+                    error!("The result poller crashed: {:?}", e);
+                    return;
+                },
             }
         },
     }
