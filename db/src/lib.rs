@@ -1,5 +1,6 @@
-use std::{collections::HashMap, env, future::Future, path::Path, sync::Arc};
+use std::{collections::HashMap, env, path::Path, sync::Arc};
 
+use async_trait::async_trait;
 use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{params, Connection, OptionalExtension};
@@ -18,53 +19,51 @@ mod migrations;
 
 pub type SharedDatabase = Arc<Mutex<Database>>;
 
+#[async_trait]
 pub trait DatabaseExt {
-    fn run<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
+    async fn run<F, T, E>(&self, f: F) -> Result<T, E>
     where
         F: FnOnce(&Database) -> Result<T, E> + Send + 'static,
         T: Send + 'static,
         E: Send + 'static;
 
-    fn run_mut<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
+    async fn run_mut<F, T, E>(&self, f: F) -> Result<T, E>
     where
         F: FnOnce(&mut Database) -> Result<T, E> + Send + 'static,
         T: Send + 'static,
         E: Send + 'static;
 }
 
+#[async_trait]
 impl DatabaseExt for SharedDatabase {
-    fn run<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
+    async fn run<F, T, E>(&self, f: F) -> Result<T, E>
     where
         F: FnOnce(&Database) -> Result<T, E> + Send + 'static,
         T: Send + 'static,
         E: Send + 'static,
     {
         let db = self.clone();
-        Box::pin(async move {
-            tokio::task::spawn_blocking(move || {
-                let guard = db.blocking_lock();
-                f(&guard)
-            })
-            .await
-            .expect("DB task panicked")
+        tokio::task::spawn_blocking(move || {
+            let guard = db.blocking_lock();
+            f(&guard)
         })
+        .await
+        .expect("DB task panicked")
     }
 
-    fn run_mut<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
+    async fn run_mut<F, T, E>(&self, f: F) -> Result<T, E>
     where
         F: FnOnce(&mut Database) -> Result<T, E> + Send + 'static,
         T: Send + 'static,
         E: Send + 'static,
     {
         let db = self.clone();
-        Box::pin(async move {
-            tokio::task::spawn_blocking(move || {
-                let mut guard = db.blocking_lock();
-                f(&mut guard)
-            })
-            .await
-            .expect("DB task panicked")
+        tokio::task::spawn_blocking(move || {
+            let mut guard = db.blocking_lock();
+            f(&mut guard)
         })
+        .await
+        .expect("DB task panicked")
     }
 }
 

@@ -8,5 +8,6 @@ rusqlite = { version = "0.34.0", features = ["bundled"] }
 poise = "0.6.1"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
 tracing = "0.1"
+async-trait = "0.1"
 
 tentrackule-riot-api = { path = "../riot-api" }
