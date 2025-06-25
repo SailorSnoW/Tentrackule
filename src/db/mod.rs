@@ -134,28 +134,46 @@ impl Database {
     ) -> rusqlite::Result<()> {
         let guild_id_u64: u64 = guild_id.into();
 
-        self.conn.execute(
-            "INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?1)",
-            [guild_id_u64],
-        )?;
+        self.conn.execute("BEGIN", [])?;
+        let res: rusqlite::Result<()> = (|| {
+            self.conn.execute(
+                "INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?1)",
+                [guild_id_u64],
+            )?;
 
-        self.conn.execute(
-            "INSERT OR REPLACE INTO accounts
-            (puuid, game_name, tag_line, region, last_match_id) VALUES (?1, ?2, ?3, ?4, '')",
-            [
-                account_data.puuid.clone(),
-                account_data.game_name.unwrap(),
-                account_data.tag_line.unwrap(),
-                region.into(),
-            ],
-        )?;
+            self.conn.execute(
+                "INSERT INTO accounts (puuid, game_name, tag_line, region, last_match_id)
+                VALUES (?1, ?2, ?3, ?4, '')
+                ON CONFLICT(puuid) DO UPDATE SET
+                    game_name = excluded.game_name,
+                    tag_line = excluded.tag_line,
+                    region = excluded.region",
+                [
+                    account_data.puuid.clone(),
+                    account_data.game_name.unwrap(),
+                    account_data.tag_line.unwrap(),
+                    region.into(),
+                ],
+            )?;
 
-        self.conn.execute(
-            "INSERT OR IGNORE INTO account_guilds (puuid, guild_id) VALUES (?1, ?2)",
-            params![account_data.puuid, guild_id_u64],
-        )?;
+            self.conn.execute(
+                "INSERT OR IGNORE INTO account_guilds (puuid, guild_id) VALUES (?1, ?2)",
+                params![account_data.puuid, guild_id_u64],
+            )?;
 
-        Ok(())
+            Ok(())
+        })();
+
+        match res {
+            Ok(_) => {
+                self.conn.execute("COMMIT", [])?;
+                Ok(())
+            }
+            Err(e) => {
+                self.conn.execute("ROLLBACK", [])?;
+                Err(e)
+            }
+        }
     }
 
     pub fn untrack_account(&self, puuid: String, guild_id: GuildId) -> rusqlite::Result<()> {
@@ -375,5 +393,27 @@ mod tests {
 
         let accounts = db.get_all_accounts().unwrap();
         assert_eq!(accounts.len(), 0);
+    }
+
+    #[test]
+    fn retracking_keeps_last_match_id() {
+        let db = setup_db();
+        db.track_new_account(sample_account(), Region::Euw, GuildId::new(1))
+            .unwrap();
+
+        db.set_last_match_id("puuid".into(), "match1".into())
+            .unwrap();
+
+        let mut updated = sample_account();
+        updated.game_name = Some("player2".into());
+
+        db.track_new_account(updated, Region::Eune, GuildId::new(1))
+            .unwrap();
+
+        let accounts = db.get_all_accounts().unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].last_match_id, "match1");
+        assert_eq!(accounts[0].game_name, "player2");
+        assert_eq!(accounts[0].region, Region::Eune);
     }
 }
