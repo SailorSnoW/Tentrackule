@@ -50,32 +50,6 @@ pub struct Database {
     conn: Connection,
 }
 
-impl Default for Database {
-    fn default() -> Self {
-        info!("💾 [DB] opening SQLite connection");
-        let db_dir = env::var("DB_PATH").unwrap_or("./".to_string());
-
-        // Expand '~' to the user's home directory
-        let db_dir = if db_dir == "~" || db_dir.starts_with("~/") {
-            if let Ok(home) = env::var("HOME") {
-                format!("{}{}", home, &db_dir[1..])
-            } else {
-                db_dir
-            }
-        } else {
-            db_dir
-        };
-
-        // Handle trailing path separators gracefully
-        let mut db_path = std::path::PathBuf::from(db_dir);
-        db_path.push("database.db3");
-
-        let connection = Connection::open(db_path).expect("Database open successfully.");
-
-        Self { conn: connection }
-    }
-}
-
 impl Database {
     /// Create a new database at the given path.
     pub fn new(path: impl AsRef<Path>) -> rusqlite::Result<Self> {
