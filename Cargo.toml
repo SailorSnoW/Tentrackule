@@ -10,21 +10,10 @@ license = "MIT"
 
 [dependencies]
 dotenv = "0.15"
-log = "0.4"
-anyhow = "1"
-thiserror = "2"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
-poise = "0.6.1"
-governor = "0.10"
-nonzero_ext = "0.3"
-rusqlite = { version = "0.34.0", features = ["bundled"] }
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
-serde = { version = "1", features = ["derive"] }
-reqwest = { version = "0.12", features = ["json"] }
-serde_json = "1"
 futures = "0.3"
-urlencoding = "2.1.3"
 
 tentrackule-riot-api = { path = "./riot-api" }
 tentrackule-db = { path = "./db" }

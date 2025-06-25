@@ -84,7 +84,7 @@ pub struct InfoDto {
     pub participants: Vec<ParticipantDto>,
     pub queue_id: u16,
     pub game_duration: u64,
-    pub game_creation: u64,
+    pub game_creation: u128,
 }
 
 /// Representation of the participant data response.

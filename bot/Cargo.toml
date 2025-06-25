@@ -7,8 +7,6 @@ edition = "2021"
 poise = "0.6.1"
 tracing = "0.1"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
-anyhow = "1"
-thiserror = "2"
 
 tentrackule-db = { path = "../db" }
 tentrackule-riot-api = { path = "../riot-api" }

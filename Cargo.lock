@@ -6,25 +6,14 @@ version = 4
 name = "Tentrackule"
 version = "1.0.0"
 dependencies = [
- "anyhow",
  "dotenv",
  "futures",
- "governor",
- "log",
- "nonzero_ext",
- "poise",
- "reqwest 0.12.20",
- "rusqlite",
- "serde",
- "serde_json",
  "tentrackule-bot",
  "tentrackule-db",
  "tentrackule-riot-api",
- "thiserror 2.0.12",
  "tokio",
  "tracing",
  "tracing-subscriber",
- "urlencoding",
 ]
 
 [[package]]
@@ -71,12 +60,6 @@ checksum = "819e7219dbd41043ac279b19830f2efc897156490d7fd6ea916720117ee66311"
 dependencies = [
  "libc",
 ]
-
-[[package]]
-name = "anyhow"
-version = "1.0.98"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
 
 [[package]]
 name = "arrayvec"
@@ -888,7 +871,7 @@ dependencies = [
  "http 1.3.1",
  "hyper 1.6.0",
  "hyper-util",
- "rustls 0.23.27",
+ "rustls 0.23.28",
  "rustls-pki-types",
  "tokio",
  "tokio-rustls 0.26.2",
@@ -1782,9 +1765,9 @@ dependencies = [
 
 [[package]]
 name = "rustls"
-version = "0.23.27"
+version = "0.23.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "730944ca083c1c233a75c09f199e973ca499344a2b7ba9e755c457e86fb4a321"
+checksum = "7160e3e10bf4535308537f3c4e1641468cd0e485175d6163087c0393c7d46643"
 dependencies = [
  "once_cell",
  "rustls-pki-types",
@@ -2220,24 +2203,19 @@ dependencies = [
 name = "tentrackule-alert"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "poise",
  "tentrackule-riot-api",
  "thiserror 2.0.12",
- "tokio",
- "tracing",
 ]
 
 [[package]]
 name = "tentrackule-bot"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "poise",
  "tentrackule-alert",
  "tentrackule-db",
  "tentrackule-riot-api",
- "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]
@@ -2257,7 +2235,6 @@ dependencies = [
 name = "tentrackule-riot-api"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "dotenv",
  "futures",
  "governor",
@@ -2427,7 +2404,7 @@ version = "0.26.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8e727b36a1a0e8b74c376ac2211e40c2c8af09fb4013c60d910495810f008e9b"
 dependencies = [
- "rustls 0.23.27",
+ "rustls 0.23.28",
  "tokio",
 ]
 
@@ -2943,9 +2920,9 @@ checksum = "5e6ad25900d524eaabdbbb96d20b4311e1e7ae1699af4fb28c17ae66c80d798a"
 
 [[package]]
 name = "windows-registry"
-version = "0.5.2"
+version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3bab093bdd303a1240bb99b8aba8ea8a69ee19d34c9e2ef9594e708a4878820"
+checksum = "5b8a9ed28765efc97bbc954883f4e6796c33a06546ebafacbabee9696967499e"
 dependencies = [
  "windows-link",
  "windows-result",
