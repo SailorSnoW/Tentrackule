@@ -24,6 +24,12 @@ pub trait DatabaseExt {
         F: FnOnce(&Database) -> Result<T, E> + Send + 'static,
         T: Send + 'static,
         E: Send + 'static;
+
+    fn run_mut<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
+    where
+        F: FnOnce(&mut Database) -> Result<T, E> + Send + 'static,
+        T: Send + 'static,
+        E: Send + 'static;
 }
 
 impl DatabaseExt for SharedDatabase {
@@ -38,6 +44,23 @@ impl DatabaseExt for SharedDatabase {
             tokio::task::spawn_blocking(move || {
                 let guard = db.blocking_lock();
                 f(&guard)
+            })
+            .await
+            .expect("DB task panicked")
+        })
+    }
+
+    fn run_mut<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
+    where
+        F: FnOnce(&mut Database) -> Result<T, E> + Send + 'static,
+        T: Send + 'static,
+        E: Send + 'static,
+    {
+        let db = self.clone();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                let mut guard = db.blocking_lock();
+                f(&mut guard)
             })
             .await
             .expect("DB task panicked")
@@ -140,53 +163,35 @@ impl Database {
     }
 
     pub fn track_new_account(
-        &self,
+        &mut self,
         account_data: AccountDto,
         region: Region,
         guild_id: GuildId,
     ) -> rusqlite::Result<()> {
         let guild_id_u64: u64 = guild_id.into();
 
-        self.conn.execute("BEGIN", [])?;
-        let res: rusqlite::Result<()> = (|| {
-            self.conn.execute(
-                "INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?1)",
-                [guild_id_u64],
-            )?;
+        let tx = self.conn.transaction()?;
+        tx.execute(
+            "INSERT OR IGNORE INTO guild_settings (guild_id) VALUES (?1)",
+            [guild_id_u64],
+        )?;
 
-            self.conn.execute(
-                "INSERT INTO accounts (puuid, game_name, tag_line, region, last_match_id)
-                VALUES (?1, ?2, ?3, ?4, '')
-                ON CONFLICT(puuid) DO UPDATE SET
-                    game_name = excluded.game_name,
-                    tag_line = excluded.tag_line,
-                    region = excluded.region",
-                [
-                    account_data.puuid.clone(),
-                    account_data.game_name.unwrap(),
-                    account_data.tag_line.unwrap(),
-                    region.into(),
-                ],
-            )?;
+        tx.execute(
+            "INSERT INTO accounts (puuid, game_name, tag_line, region, last_match_id)\n                VALUES (?1, ?2, ?3, ?4, '')\n                ON CONFLICT(puuid) DO UPDATE SET\n                    game_name = excluded.game_name,\n                    tag_line = excluded.tag_line,\n                    region = excluded.region",
+            [
+                account_data.puuid.clone(),
+                account_data.game_name.unwrap(),
+                account_data.tag_line.unwrap(),
+                region.into(),
+            ],
+        )?;
 
-            self.conn.execute(
-                "INSERT OR IGNORE INTO account_guilds (puuid, guild_id) VALUES (?1, ?2)",
-                params![account_data.puuid, guild_id_u64],
-            )?;
+        tx.execute(
+            "INSERT OR IGNORE INTO account_guilds (puuid, guild_id) VALUES (?1, ?2)",
+            params![account_data.puuid, guild_id_u64],
+        )?;
 
-            Ok(())
-        })();
-
-        match res {
-            Ok(_) => {
-                self.conn.execute("COMMIT", [])?;
-                Ok(())
-            }
-            Err(e) => {
-                self.conn.execute("ROLLBACK", [])?;
-                Err(e)
-            }
-        }
+        tx.commit()
     }
 
     pub fn untrack_account(&self, puuid: String, guild_id: GuildId) -> rusqlite::Result<()> {
@@ -365,7 +370,7 @@ mod tests {
 
     #[test]
     fn track_and_fetch_account() {
-        let db = setup_db();
+        let mut db = setup_db();
         db.track_new_account(sample_account(), Region::Euw, GuildId::new(1))
             .unwrap();
 
@@ -385,7 +390,7 @@ mod tests {
 
     #[test]
     fn get_guilds_for_account() {
-        let db = setup_db();
+        let mut db = setup_db();
         db.track_new_account(sample_account(), Region::Euw, GuildId::new(1))
             .unwrap();
         db.set_alert_channel(GuildId::new(1), ChannelId::new(2))
@@ -396,7 +401,7 @@ mod tests {
 
     #[test]
     fn untrack_account_removes_entries() {
-        let db = setup_db();
+        let mut db = setup_db();
         db.track_new_account(sample_account(), Region::Euw, GuildId::new(1))
             .unwrap();
 
@@ -408,7 +413,7 @@ mod tests {
 
     #[test]
     fn retracking_keeps_last_match_id() {
-        let db = setup_db();
+        let mut db = setup_db();
         db.track_new_account(sample_account(), Region::Euw, GuildId::new(1))
             .unwrap();
 

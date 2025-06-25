@@ -52,7 +52,7 @@ pub async fn track(
     if let Err(e) = ctx
         .data()
         .db
-        .run(move |db| db.track_new_account(account_data, region, guild_id))
+        .run_mut(move |db| db.track_new_account(account_data, region, guild_id))
         .await
     {
         tracing::error!("[CMD] DB error while tracking player: {}", e);
