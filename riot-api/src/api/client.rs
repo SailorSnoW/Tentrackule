@@ -1,6 +1,5 @@
 use std::{fmt::Debug, sync::Arc};
 
-use dotenv::dotenv;
 use governor::{
     clock::DefaultClock,
     state::{InMemoryState, NotKeyed},
@@ -25,8 +24,6 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new(api_key: String) -> Self {
-        dotenv().ok();
-
         let q = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
 
         Self {
@@ -90,11 +87,9 @@ pub struct AccountDto {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-
-    use dotenv::dotenv;
-
     use super::ApiClient;
+    use dotenv::dotenv;
+    use std::env;
 
     #[tokio::test]
     #[ignore = "API Key required"]

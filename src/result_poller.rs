@@ -1,4 +1,3 @@
-use dotenv::dotenv;
 use futures::{stream, StreamExt};
 use std::{
     env,
@@ -27,7 +26,6 @@ pub struct ResultPoller {
 
 impl ResultPoller {
     pub fn new(lol_api: Arc<LolApi>, db: SharedDatabase, alert_sender: AlertSender) -> Self {
-        dotenv().ok();
         let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
