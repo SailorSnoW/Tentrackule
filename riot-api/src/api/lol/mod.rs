@@ -1,40 +1,59 @@
-use std::sync::Arc;
+use async_trait::async_trait;
+use bytes::Bytes;
+use std::fmt::Debug;
 use tracing::warn;
 
-use crate::types::LeaguePoints;
+use crate::types::{LeaguePoints, RiotApiResponse};
 
-use super::client::ApiClient;
+use super::{
+    client::{AccountApi, ApiClientBase, ApiRequest},
+    types::AccountDto,
+};
 
 pub mod league_v4;
 pub mod match_v5;
 
+pub use league_v4::LeagueApi;
 use league_v4::LeagueEntryDto;
-pub use league_v4::LeagueV4Api;
+pub use match_v5::MatchApi;
 use match_v5::MatchDto;
-pub use match_v5::MatchV5Api;
+
+/// All APIs required for the entire LoL required scope of the bot.
+pub trait LolApiFull: LeagueApi + MatchApi + AccountApi {}
 
 #[derive(Debug)]
-pub struct LolApi {
-    pub client: Arc<ApiClient>,
-    pub match_v5: MatchV5Api,
-    pub league_v4: LeagueV4Api,
+pub struct LolApiClient(ApiClientBase);
+
+impl LolApiClient {
+    pub fn new(api_key: String) -> Self {
+        Self(ApiClientBase::new(api_key))
+    }
+
+    pub fn start_metrics_logging(&self) {
+        let metrics = self.0.metrics.clone();
+        tokio::spawn(async move { metrics.log_loop().await });
+    }
 }
 
-impl LolApi {
-    pub fn new(api_client: Arc<ApiClient>) -> Self {
-        let api = Self {
-            client: api_client.clone(),
-            match_v5: MatchV5Api::new(api_client.clone()),
-            league_v4: LeagueV4Api::new(api_client),
-        };
+#[async_trait]
+impl ApiRequest for LolApiClient {
+    async fn request(&self, path: String) -> RiotApiResponse<Bytes> {
+        self.0.request(path).await
+    }
+}
 
-        // Start the metrics logger
-        let metrics = api.client.metrics.clone();
-        tokio::spawn(async move {
-            metrics.log_loop().await;
-        });
+impl LeagueApi for LolApiClient {}
+impl MatchApi for LolApiClient {}
+impl LolApiFull for LolApiClient {}
 
-        api
+#[async_trait]
+impl AccountApi for LolApiClient {
+    async fn get_account_by_riot_id(
+        &self,
+        game_name: String,
+        tag_line: String,
+    ) -> RiotApiResponse<AccountDto> {
+        self.0.get_account_by_riot_id(game_name, tag_line).await
     }
 }
 

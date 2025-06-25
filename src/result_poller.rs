@@ -9,7 +9,7 @@ use tentrackule_db::{types::Account, DatabaseExt, SharedDatabase};
 use tentrackule_riot_api::{
     api::{
         types::{LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo},
-        LolApi,
+        LolApiFull,
     },
     types::{LeaguePoints, QueueType, Region},
 };
@@ -17,7 +17,7 @@ use tracing::{debug, error, info, warn};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
 pub struct ResultPoller {
-    lol_api: Arc<LolApi>,
+    lol_api: Arc<dyn LolApiFull>,
     db: SharedDatabase,
     alert_dispatcher: AlertDispatcher,
     start_time: u128,
@@ -26,7 +26,7 @@ pub struct ResultPoller {
 
 impl ResultPoller {
     pub fn new(
-        lol_api: Arc<LolApi>,
+        lol_api: Arc<dyn LolApiFull>,
         db: SharedDatabase,
         alert_dispatcher: AlertDispatcher,
     ) -> Self {
@@ -187,7 +187,7 @@ impl ResultPoller {
     }
 
     async fn fetch_new_match_id(&self, puuid: String, region: Region) -> Option<String> {
-        let request = self.lol_api.match_v5.get_last_match_id(puuid, region).await;
+        let request = self.lol_api.get_last_match_id(puuid, region).await;
         match request {
             Ok(maybe_id) => maybe_id,
             Err(e) => {
@@ -223,7 +223,7 @@ impl ResultPoller {
     }
 
     async fn fetch_match_data(&self, match_id: String, region: Region) -> Option<MatchDto> {
-        let request = self.lol_api.match_v5.get_match(match_id, region).await;
+        let request = self.lol_api.get_match(match_id, region).await;
         match request {
             Ok(m) => Some(m),
             Err(e) => {
@@ -238,7 +238,7 @@ impl ResultPoller {
         puuid: String,
         region: Region,
     ) -> Option<LeagueEntryDto> {
-        let request = self.lol_api.league_v4.get_leagues(puuid, region).await;
+        let request = self.lol_api.get_leagues(puuid, region).await;
         let leagues = match request {
             Ok(l) => l,
             Err(e) => {

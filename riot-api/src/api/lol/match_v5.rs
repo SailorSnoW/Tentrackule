@@ -1,29 +1,24 @@
-use std::{env, sync::Arc};
+use std::env;
 
+use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
 use urlencoding::encode;
 
 use crate::{
-    api::client::ApiClient,
-    types::{QueueType, Region, RiotApiResponse},
+    api::client::ApiRequest,
+    types::{QueueType, Region, RiotApiError, RiotApiResponse},
 };
 
-#[derive(Debug)]
-pub struct MatchV5Api(Arc<ApiClient>);
-
-impl MatchV5Api {
-    pub fn new(api_client: Arc<ApiClient>) -> Self {
-        Self(api_client)
-    }
-
-    pub async fn get_last_match_id(
+#[async_trait]
+pub trait MatchApi: ApiRequest {
+    async fn get_last_match_id(
         &self,
         puuid: String,
         region: Region,
     ) -> RiotApiResponse<Option<String>> {
-        tracing::trace!("[RIOT::CLIENT] get_last_match_id {} in {:?}", puuid, region);
+        tracing::trace!("[MatchV5 API] get_last_match_id {} in {:?}", puuid, region);
 
         let params = "?start=0&count=1";
         let path = format!(
@@ -33,13 +28,14 @@ impl MatchV5Api {
             params
         );
 
-        let seq: Vec<String> = self.0.request(path).await?;
+        let raw = self.request(path).await?;
+        let seq: Vec<String> = serde_json::from_slice(&raw).map_err(RiotApiError::Serde)?;
 
         Ok(seq.first().cloned())
     }
 
-    pub async fn get_match(&self, match_id: String, region: Region) -> RiotApiResponse<MatchDto> {
-        tracing::trace!("[RIOT::CLIENT] get_match {} in {:?}", match_id, region);
+    async fn get_match(&self, match_id: String, region: Region) -> RiotApiResponse<MatchDto> {
+        tracing::trace!("[MatchV5 API] get_match {} in {:?}", match_id, region);
 
         let path = format!(
             "https://{}/lol/match/v5/matches/{}",
@@ -47,7 +43,8 @@ impl MatchV5Api {
             match_id,
         );
 
-        self.0.request(path).await
+        let raw = self.request(path).await?;
+        serde_json::from_slice(&raw).map_err(RiotApiError::Serde)
     }
 }
 
@@ -180,9 +177,8 @@ pub use tests::dummy_match;
 
 #[cfg(test)]
 mod tests {
-    use crate::api::lol::match_v5::ParticipantDto;
-
     use super::*;
+    use crate::api::{lol::match_v5::ParticipantDto, LolApiClient};
 
     fn dummy_participant(puuid: &str) -> ParticipantDto {
         ParticipantDto {
@@ -263,11 +259,10 @@ mod tests {
     async fn get_match_data_works() {
         let key = env::var("RIOT_API_KEY")
             .expect("A Riot API Key must be set in environment to create the API Client.");
-        let client = ApiClient::new(key);
-        let api = MatchV5Api::new(client.into());
+        let client = LolApiClient::new(key);
 
         let test_match = "EUW1_7442220067".to_string();
-        let match_data = api.get_match(test_match, Region::Euw).await.unwrap();
+        let match_data = client.get_match(test_match, Region::Euw).await.unwrap();
 
         assert_eq!(match_data.info.queue_id, 450);
         assert_eq!(match_data.queue_type(), QueueType::Aram)

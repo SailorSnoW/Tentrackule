@@ -42,8 +42,7 @@ pub async fn track(
 
     let account_data = ctx
         .data()
-        .lol_api
-        .client
+        .account_api
         .get_account_by_riot_id(game_name.clone(), tag.clone())
         .await?;
 
@@ -81,8 +80,7 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
     debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
     let account_data = ctx
         .data()
-        .lol_api
-        .client
+        .account_api
         .get_account_by_riot_id(game_name.clone(), tag.clone())
         .await?;
 

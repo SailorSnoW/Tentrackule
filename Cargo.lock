@@ -2238,6 +2238,8 @@ dependencies = [
 name = "tentrackule-riot-api"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "bytes",
  "dotenv",
  "futures",
  "governor",

@@ -3,7 +3,7 @@ use poise::serenity_prelude as serenity;
 use serenity::*;
 use std::{env, sync::Arc};
 use tentrackule_db::SharedDatabase;
-use tentrackule_riot_api::api::LolApi;
+use tentrackule_riot_api::api::client::AccountApi;
 use tracing::{error, info};
 
 use handler::event_handler;
@@ -25,7 +25,7 @@ pub struct DiscordBot {
 }
 
 impl DiscordBot {
-    pub async fn new(db: SharedDatabase, lol_api: Arc<LolApi>) -> Self {
+    pub async fn new(db: SharedDatabase, account_api: Arc<dyn AccountApi>) -> Self {
         let token =
             env::var("DISCORD_BOT_TOKEN").expect("Expected a discord bot token in the environment");
         let intents = GatewayIntents::non_privileged();
@@ -46,7 +46,7 @@ impl DiscordBot {
             .setup(|ctx, _ready, framework| {
                 Box::pin(async move {
                     poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                    Ok(Data { db, lol_api })
+                    Ok(Data { db, account_api })
                 })
             })
             .build();
@@ -79,5 +79,5 @@ impl DiscordBot {
 #[derive(Debug)]
 pub struct Data {
     db: SharedDatabase,
-    lol_api: Arc<LolApi>,
+    account_api: Arc<dyn AccountApi>,
 }

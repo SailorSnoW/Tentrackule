@@ -1,26 +1,19 @@
-use std::sync::Arc;
-
+use async_trait::async_trait;
 use serde::Deserialize;
 
 use crate::{
-    api::client::ApiClient,
-    types::{LeaguePoints, Region, RiotApiResponse},
+    api::client::ApiRequest,
+    types::{LeaguePoints, Region, RiotApiError, RiotApiResponse},
 };
 
-#[derive(Debug)]
-pub struct LeagueV4Api(Arc<ApiClient>);
-
-impl LeagueV4Api {
-    pub fn new(api_client: Arc<ApiClient>) -> Self {
-        Self(api_client)
-    }
-
-    pub async fn get_leagues(
+#[async_trait]
+pub trait LeagueApi: ApiRequest {
+    async fn get_leagues(
         &self,
         puuid: String,
         region: Region,
     ) -> RiotApiResponse<Vec<LeagueEntryDto>> {
-        tracing::trace!("[RIOT::CLIENT] get_league {} in {:?}", puuid, region);
+        tracing::trace!("[LeagueV4 API] get_league {} in {:?}", puuid, region);
 
         let path = format!(
             "https://{}/lol/league/v4/entries/by-puuid/{}",
@@ -28,7 +21,8 @@ impl LeagueV4Api {
             puuid,
         );
 
-        self.0.request(path).await
+        let raw = self.request(path).await?;
+        serde_json::from_slice(&raw).map_err(RiotApiError::Serde)
     }
 }
 
