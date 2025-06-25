@@ -13,6 +13,7 @@ pub use alert_sender::AlertSender;
 mod alert_sender;
 mod commands;
 mod handler;
+mod message_sender;
 
 // Types used by all command functions
 type Error = Box<dyn std::error::Error + Send + Sync>;
