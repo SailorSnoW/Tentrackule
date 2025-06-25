@@ -1,4 +1,5 @@
 mod lol;
+pub use lol::match_v5::init_ddragon_version;
 
 pub mod client;
 pub mod metrics;

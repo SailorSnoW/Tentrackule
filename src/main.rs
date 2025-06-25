@@ -4,7 +4,7 @@ use dotenv::dotenv;
 use result_poller::ResultPoller;
 use tentrackule_bot::{AlertDispatcher, DiscordBot};
 use tentrackule_db::Database;
-use tentrackule_riot_api::api::{client::ApiClient, LolApi};
+use tentrackule_riot_api::api::{client::ApiClient, init_ddragon_version, LolApi};
 use tracing::{error, info};
 
 mod logging;
@@ -14,6 +14,7 @@ mod result_poller;
 async fn main() {
     logging::init();
     dotenv().ok();
+    init_ddragon_version();
 
     info!("🚀 [MAIN] Tentrackule starting");
 

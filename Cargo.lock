@@ -2242,6 +2242,7 @@ dependencies = [
  "governor",
  "log",
  "nonzero_ext",
+ "once_cell",
  "poise",
  "reqwest 0.12.20",
  "serde",

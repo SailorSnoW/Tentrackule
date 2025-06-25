@@ -1,5 +1,6 @@
 use std::{env, sync::Arc};
 
+use once_cell::sync::Lazy;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
 use urlencoding::encode;
@@ -50,8 +51,16 @@ impl MatchV5Api {
     }
 }
 
-fn ddragon_version() -> String {
-    env::var("DDRAGON_VERSION").unwrap_or_else(|_| "15.12.1".to_string())
+/// Loaded once at startup to avoid repeated environment lookups.
+pub static DDRAGON_VERSION: Lazy<String> =
+    Lazy::new(|| env::var("DDRAGON_VERSION").unwrap_or_else(|_| "15.12.1".to_string()));
+
+pub fn init_ddragon_version() {
+    Lazy::force(&DDRAGON_VERSION);
+}
+
+fn ddragon_version() -> &'static str {
+    DDRAGON_VERSION.as_str()
 }
 
 /// Representation of the match data response.
