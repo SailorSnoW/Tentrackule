@@ -1,7 +1,7 @@
 use poise::serenity_prelude::ChannelType;
+use tentrackule_db::DatabaseExt;
+use tentrackule_riot_api::types::Region;
 use tracing::{debug, info};
-
-use crate::{db::DatabaseExt, riot::types::Region};
 
 use super::{serenity, Context, Error};
 

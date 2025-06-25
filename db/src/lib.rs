@@ -1,4 +1,4 @@
-use std::{collections::HashMap, env, sync::Arc};
+use std::{collections::HashMap, env, future::Future, path::Path, sync::Arc};
 
 use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
@@ -7,7 +7,7 @@ use tokio::sync::Mutex;
 use tracing::{debug, info};
 use types::Account;
 
-use crate::riot::{
+use tentrackule_riot_api::{
     api::types::AccountDto,
     types::{LeaguePoints, QueueType, Region},
 };
@@ -19,7 +19,7 @@ mod migrations;
 pub type SharedDatabase = Arc<Mutex<Database>>;
 
 pub trait DatabaseExt {
-    async fn run<F, T, E>(&self, f: F) -> Result<T, E>
+    fn run<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
     where
         F: FnOnce(&Database) -> Result<T, E> + Send + 'static,
         T: Send + 'static,
@@ -27,19 +27,21 @@ pub trait DatabaseExt {
 }
 
 impl DatabaseExt for SharedDatabase {
-    async fn run<F, T, E>(&self, f: F) -> Result<T, E>
+    fn run<F, T, E>(&self, f: F) -> impl Future<Output = Result<T, E>> + Send
     where
         F: FnOnce(&Database) -> Result<T, E> + Send + 'static,
         T: Send + 'static,
         E: Send + 'static,
     {
         let db = self.clone();
-        tokio::task::spawn_blocking(move || {
-            let guard = db.blocking_lock();
-            f(&guard)
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                let guard = db.blocking_lock();
+                f(&guard)
+            })
+            .await
+            .expect("DB task panicked")
         })
-        .await
-        .expect("DB task panicked")
     }
 }
 
@@ -48,8 +50,8 @@ pub struct Database {
     conn: Connection,
 }
 
-impl Database {
-    pub fn new() -> Self {
+impl Default for Database {
+    fn default() -> Self {
         info!("💾 [DB] opening SQLite connection");
         let db_dir = env::var("DB_PATH").unwrap_or("./".to_string());
 
@@ -70,13 +72,50 @@ impl Database {
 
         let connection = Connection::open(db_path).expect("Database open successfully.");
 
-        let db = Self { conn: connection };
+        Self { conn: connection }
+    }
+}
+
+impl Database {
+    /// Create a new database at the given path.
+    pub fn new(path: impl AsRef<Path>) -> rusqlite::Result<Self> {
+        info!("💾 [DB] opening SQLite connection");
+        let conn = Connection::open(path)?;
+        Ok(Self::from_connection(conn))
+    }
+
+    /// Create a new database from the given connection and initialize schema.
+    pub fn from_connection(conn: Connection) -> Self {
+        let db = Self { conn };
         db.init();
         db
     }
 
-    pub fn new_shared() -> SharedDatabase {
-        Arc::new(Mutex::new(Self::new()))
+    /// Create a new database using the `DB_PATH` environment variable.
+    pub fn new_from_env() -> rusqlite::Result<Self> {
+        let db_dir = env::var("DB_PATH").unwrap_or_else(|_| "./".to_string());
+
+        // Expand '~' to the user's home directory
+        let db_dir = if db_dir == "~" || db_dir.starts_with("~/") {
+            if let Ok(home) = env::var("HOME") {
+                format!("{}{}", home, &db_dir[1..])
+            } else {
+                db_dir
+            }
+        } else {
+            db_dir
+        };
+
+        let mut db_path = std::path::PathBuf::from(db_dir);
+        db_path.push("database.db3");
+        Self::new(db_path)
+    }
+
+    /// Create a thread-safe shared database using the `DB_PATH` environment variable.
+    pub fn new_shared_from_env() -> SharedDatabase {
+        Arc::new(Mutex::new(
+            Self::new_from_env().expect("Database open successfully."),
+        ))
     }
 
     /// Initialize the schemas of the database.
@@ -334,14 +373,12 @@ impl Database {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::riot::types::Region;
     use poise::serenity_prelude::{ChannelId, GuildId};
+    use tentrackule_riot_api::types::Region;
 
     fn setup_db() -> Database {
         let conn = Connection::open_in_memory().unwrap();
-        let db = Database { conn };
-        db.init();
-        db
+        Database::from_connection(conn)
     }
 
     fn sample_account() -> AccountDto {

@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use serde::Deserialize;
 
-use crate::riot::{
+use crate::{
     api::client::ApiClient,
     types::{LeaguePoints, Region, RiotApiResponse},
 };

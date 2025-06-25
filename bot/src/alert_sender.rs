@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use tentrackule_alert::TryIntoAlert;
+use tentrackule_db::DatabaseExt;
 use tracing::{error, warn};
-
-use crate::{db::DatabaseExt, riot::api::types::MatchDtoWithLeagueInfo};
 
 use super::*;
 
@@ -17,8 +17,8 @@ impl AlertSender {
         Self { ctx, db }
     }
 
-    pub async fn dispatch_alert(&self, puuid: &str, match_data: MatchDtoWithLeagueInfo) {
-        let alert = match match_data.into_embed(puuid) {
+    pub async fn dispatch_alert(&self, puuid: &str, match_data: impl TryIntoAlert) {
+        let alert = match match_data.try_into_alert(puuid) {
             Ok(alert) => alert,
             Err(reason) => {
                 error!("⚠️ [ALERT] failed to build alert: {}", reason);

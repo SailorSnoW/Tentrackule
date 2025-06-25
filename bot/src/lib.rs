@@ -2,17 +2,16 @@ use commands::{current_alert_channel, set_alert_channel, show_tracked, track, un
 use poise::serenity_prelude as serenity;
 use serenity::*;
 use std::{env, sync::Arc};
+use tentrackule_db::SharedDatabase;
+use tentrackule_riot_api::api::LolApi;
 use tracing::{error, info};
 
 use handler::event_handler;
-
-use crate::{db::SharedDatabase, riot::api::LolApi};
 
 pub use alert_sender::AlertSender;
 
 mod alert_sender;
 mod commands;
-mod embeds;
 mod handler;
 
 // Types used by all command functions

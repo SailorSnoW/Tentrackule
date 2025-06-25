@@ -4,7 +4,7 @@ use poise::serenity_prelude::Colour;
 use serde::Deserialize;
 use urlencoding::encode;
 
-use crate::riot::{
+use crate::{
     api::client::ApiClient,
     types::{QueueType, Region, RiotApiResponse},
 };
@@ -171,7 +171,7 @@ pub use tests::dummy_match;
 
 #[cfg(test)]
 mod tests {
-    use crate::riot::api::lol::match_v5::ParticipantDto;
+    use crate::api::lol::match_v5::ParticipantDto;
 
     use super::*;
 
@@ -252,7 +252,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "API Key required"]
     async fn get_match_data_works() {
-        let client = ApiClient::new();
+        let key = env::var("RIOT_API_KEY")
+            .expect("A Riot API Key must be set in environment to create the API Client.");
+        let client = ApiClient::new(key);
         let api = MatchV5Api::new(client.into());
 
         let test_match = "EUW1_7442220067".to_string();

@@ -1,4 +1,4 @@
-use crate::riot::types::{LeaguePoints, Region};
+use tentrackule_riot_api::types::{LeaguePoints, Region};
 
 #[derive(Debug, Clone)]
 pub struct Account {

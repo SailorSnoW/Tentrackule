@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use tracing::warn;
 
-use crate::riot::types::LeaguePoints;
+use crate::types::LeaguePoints;
 
 use super::client::ApiClient;
 

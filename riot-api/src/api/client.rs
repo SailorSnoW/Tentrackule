@@ -1,4 +1,4 @@
-use std::{env, fmt::Debug, sync::Arc};
+use std::{fmt::Debug, sync::Arc};
 
 use dotenv::dotenv;
 use governor::{
@@ -10,7 +10,7 @@ use nonzero_ext::nonzero;
 use reqwest::StatusCode;
 use serde::{de::DeserializeOwned, Deserialize};
 
-use crate::riot::types::{RiotApiError, RiotApiResponse};
+use crate::types::{RiotApiError, RiotApiResponse};
 
 use super::metrics::RequestMetrics;
 
@@ -24,17 +24,15 @@ pub struct ApiClient {
 }
 
 impl ApiClient {
-    pub fn new() -> Self {
+    pub fn new(api_key: String) -> Self {
         dotenv().ok();
 
         let q = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
-        let key = env::var("RIOT_API_KEY")
-            .expect("A Riot API Key must be set in environment to create the API Client.");
 
         Self {
             client: reqwest::Client::new(),
             limiter: RateLimiter::direct(q),
-            key,
+            key: api_key,
             metrics: RequestMetrics::new(),
         }
     }
@@ -101,7 +99,9 @@ mod tests {
     #[tokio::test]
     #[ignore = "API Key required"]
     async fn get_account_by_riot_id_works() {
-        let client = ApiClient::new();
+        let key = env::var("RIOT_API_KEY")
+            .expect("A Riot API Key must be set in environment to create the API Client.");
+        let client = ApiClient::new(key);
 
         let account = client
             .get_account_by_riot_id("Le Conservateur".to_string(), "3012".to_string())
@@ -120,7 +120,9 @@ mod tests {
     async fn request_propagates_reqwest_error() {
         dotenv().ok();
         env::set_var("RIOT_API_KEY", "TEST_KEY");
-        let client = super::ApiClient::new();
+        let key = env::var("RIOT_API_KEY")
+            .expect("A Riot API Key must be set in environment to create the API Client.");
+        let client = ApiClient::new(key);
 
         let bad_url = "ht!tp://invalid-url".to_string(); // incorrect schema
 
