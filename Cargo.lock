@@ -2215,8 +2215,10 @@ name = "tentrackule-bot"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "dotenv",
  "poise",
  "rusqlite",
+ "serde_json",
  "tentrackule-alert",
  "tentrackule-db",
  "tentrackule-riot-api",
