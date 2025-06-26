@@ -85,12 +85,12 @@ impl MatchDtoWithLeagueInfo {
     /// Returns a positive number for LP gain, negative for LP loss, or None if data is missing.
     pub fn calculate_league_points_difference(&self, won: bool) -> Option<i16> {
         let Some(league_data) = &self.league_data else {
-            warn!("⚠️ [RIOT] no league data for LP diff");
+            warn!("no league data for LP diff");
             return None;
         };
 
         let Some(cached) = self.cached_league_points else {
-            warn!("⚠️ [RIOT] cached LPs missing, diff ignored");
+            warn!("cached LPs missing, diff ignored");
             return None;
         };
 

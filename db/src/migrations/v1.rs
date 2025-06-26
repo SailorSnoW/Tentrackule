@@ -17,7 +17,7 @@ impl DbMigration for V1 {
             .any(|col| col.unwrap() == "lol_solo_duo_lps");
 
         if !column_exists {
-            info!("🛠️ [MIGRATION] adding column 'lol_solo_duo_lps' to 'accounts'");
+            info!("adding column 'lol_solo_duo_lps' to 'accounts'");
             conn.execute(
                 "ALTER TABLE accounts ADD COLUMN lol_solo_duo_lps INTEGER",
                 [],

@@ -10,11 +10,8 @@ pub async fn event_handler(
     _framework: poise::FrameworkContext<'_, Data, Error>,
 ) -> Result<(), Error> {
     if let serenity::FullEvent::Ready { data_about_bot, .. } = event {
-        info!("🤖 [DISCORD] connected as {}", data_about_bot.user.name);
-        info!(
-            "🎮 [DISCORD] joined {} guild(s)",
-            data_about_bot.guilds.len()
-        );
+        info!("connected as {}", data_about_bot.user.name);
+        info!("joined {} guild(s)", data_about_bot.guilds.len());
         ctx.set_activity(Some(ActivityData::playing("League of Legends")));
     }
 
@@ -25,7 +22,7 @@ pub async fn event_handler(
 
             if let Some(channel_id) = guild.system_channel_id {
                 if let Err(e) = channel_id.say(ctx, &welcome_message).await {
-                    warn!("⚠️ [DISCORD] Couldn't send the welcome message: {}", e);
+                    warn!("Couldn't send the welcome message: {}", e);
                 }
             } else if let Some(first_text) = guild
                 .channels

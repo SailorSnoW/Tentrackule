@@ -33,11 +33,7 @@ impl RequestMetrics {
             } else {
                 0.0
             };
-            tracing::info!(
-                "📊 [RIOT] {} requests executed (avg {:.2} req/min)",
-                total,
-                avg
-            );
+            tracing::info!("{} requests executed (avg {:.2} req/min)", total, avg);
         }
     }
 }

@@ -23,7 +23,7 @@ async fn require_guild(ctx: &Context<'_>) -> Option<serenity::GuildId> {
 }
 
 fn enter_command_log(command_name: &str) {
-    info!("🛠️ [CMD] /{} invoked", command_name)
+    info!("/{} invoked", command_name)
 }
 
 /// Track a new player and start receiving alerts on new game results in your server.
@@ -56,7 +56,7 @@ pub async fn track(
         .run_mut(move |db| db.track_new_account(account_data, region, guild_id))
         .await
     {
-        tracing::error!("[CMD] DB error while tracking player: {}", e);
+        tracing::error!("DB error while tracking player: {}", e);
         ctx.say("❌ Internal Error: Something went wrong during database operations.")
             .await?;
         return Ok(());
@@ -79,7 +79,7 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
         return Ok(());
     };
 
-    debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
+    debug!("fetching PUUID for {}#{}", game_name, tag);
     let account_data = ctx
         .data()
         .account_api
@@ -92,7 +92,7 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
         .run(move |db| db.untrack_account(account_data.puuid, guild_id))
         .await
     {
-        tracing::error!("[CMD] DB error while untracking player: {}", e);
+        tracing::error!("DB error while untracking player: {}", e);
         ctx.say("❌ Internal Error: Something went wrong during database operations.")
             .await?;
         return Ok(());
@@ -130,7 +130,7 @@ pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {
             s
         }
         Err(e) => {
-            tracing::error!("[CMD] DB query error: {}", e);
+            tracing::error!("DB query error: {}", e);
             "❌ Internal Error: Couldn't retrieve tracked players for this server.".to_string()
         }
     };
@@ -164,7 +164,7 @@ pub async fn set_alert_channel(
         .run(move |db| db.set_alert_channel(guild_id, channel.id))
         .await
     {
-        tracing::error!("[CMD] DB error while setting alert channel: {}", e);
+        tracing::error!("DB error while setting alert channel: {}", e);
         ctx.say("❌ Internal Error: Couldn't update alert channel.")
             .await?;
         return Ok(());
@@ -205,7 +205,7 @@ pub async fn current_alert_channel(ctx: Context<'_>) -> Result<(), Error> {
                 .to_string()
         }
         Err(e) => {
-            tracing::error!("[CMD] DB query error: {}", e);
+            tracing::error!("DB query error: {}", e);
             "❌ Internal Error: Couldn't the alert channel for this server.".to_string()
         }
     };

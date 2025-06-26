@@ -57,7 +57,7 @@ impl ResultPoller {
     }
 
     async fn run(&self) {
-        info!("📡 [POLL] poller started");
+        info!("poller started");
 
         let mut interval = tokio::time::interval(self.poll_interval);
 
@@ -68,7 +68,7 @@ impl ResultPoller {
     }
 
     async fn poll_once(&self) {
-        info!("🔄 [POLL] starting fetch cycle");
+        info!("🔄 starting fetch cycle");
 
         let accounts = self.get_all_accounts().await;
         stream::iter(accounts)
@@ -101,15 +101,12 @@ impl ResultPoller {
         };
 
         if new_match_id == account.last_match_id {
-            debug!(
-                "⏭️ [POLL] {}#{} no new result",
-                account.game_name, account.tag_line
-            );
+            debug!("{}#{} no new result", account.game_name, account.tag_line);
             return;
         }
 
         debug!(
-            "💾 [POLL] {}#{} caching match {}",
+            "{}#{} caching match {}",
             account.game_name, account.tag_line, new_match_id
         );
         self.store_new_match_id(account.puuid.clone(), new_match_id.clone())
@@ -124,7 +121,7 @@ impl ResultPoller {
 
         if self.start_time > match_data.info.game_creation {
             debug!(
-                "🗑️ [POLL] {}#{} old match ignored",
+                "{}#{} old match ignored",
                 account.game_name, account.tag_line
             );
             return;
@@ -143,7 +140,7 @@ impl ResultPoller {
 
                 if let Some(x) = &league {
                     debug!(
-                        "⬆️ [POLL] updating league points to {} for {}#{}",
+                        "updating league points to {} for {}#{}",
                         x.league_points, account.game_name, account.tag_line
                     );
                     self.update_league_points(
@@ -153,11 +150,11 @@ impl ResultPoller {
                     )
                     .await;
                 } else {
-                    warn!("⚠️ [POLL] league data missing");
+                    warn!("league data missing");
                 }
 
                 debug!(
-                    "📢 [POLL] dispatching alert for {}#{}",
+                    "dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
@@ -173,7 +170,7 @@ impl ResultPoller {
             }
             QueueType::NormalDraft | QueueType::Aram => {
                 debug!(
-                    "📢 [POLL] dispatching alert for {}#{}",
+                    "dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
@@ -185,7 +182,7 @@ impl ResultPoller {
             }
             QueueType::Unhandled => {
                 debug!(
-                    "❌ [POLL] {}#{} unsupported queue ID: {}",
+                    "{}#{} unsupported queue ID: {}",
                     account.game_name, account.tag_line, match_data.info.queue_id
                 );
             }

@@ -59,7 +59,7 @@ impl DiscordBot {
             .build();
         let client_builder = ClientBuilder::new(token, intents).framework(framework);
 
-        info!("🤖 [DISCORD] initializing bot");
+        info!("initializing bot");
         let client = client_builder
             .await
             .expect("Discord client creation should success.");
@@ -72,9 +72,9 @@ impl DiscordBot {
     }
 
     async fn run(mut self) -> Result<(), serenity::Error> {
-        info!("🌐 [DISCORD] connecting to gateway");
+        info!("connecting to gateway");
         if let Err(why) = self.client.start().await {
-            error!("❌ [DISCORD] connection failed: {why:?}");
+            error!("connection failed: {why:?}");
             return Err(why);
         }
 

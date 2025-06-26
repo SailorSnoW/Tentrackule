@@ -21,7 +21,7 @@ async fn main() {
     dotenv().ok();
     init_ddragon_version();
 
-    info!("🚀 [MAIN] Tentrackule starting");
+    info!("🚀 Tentrackule starting");
 
     let db = Database::new_shared_from_env();
 

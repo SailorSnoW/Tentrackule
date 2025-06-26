@@ -32,10 +32,7 @@ impl AlertDispatcher {
         match self.db.run(|db| db.get_guilds_for_puuid(puuid)).await {
             Ok(x) => x,
             Err(e) => {
-                error!(
-                    "❌ [ALERT] DB error while getting guilds for account: {}",
-                    e
-                );
+                error!("DB error while getting guilds for account: {}", e);
                 HashMap::new()
             }
         }
@@ -48,7 +45,7 @@ impl AlertDispatch for AlertDispatcher {
         let alert = match match_data.try_into_alert(puuid) {
             Ok(alert) => alert,
             Err(reason) => {
-                error!("⚠️ [ALERT] failed to build alert: {}", reason);
+                error!("failed to build alert: {}", reason);
                 return;
             }
         };
@@ -66,14 +63,11 @@ impl AlertDispatch for AlertDispatcher {
                         .send_message(channel_id, CreateMessage::new().embed(alert.clone()))
                         .await
                     {
-                        error!("❌ [ALERT] failed to send message: {}", e)
+                        error!("failed to send message: {}", e)
                     }
                 }
                 None => {
-                    warn!(
-                        "⚠️ [ALERT] guild {} has no alert channel, skipping",
-                        guild.0
-                    );
+                    warn!("guild {} has no alert channel, skipping", guild.0);
                     continue;
                 }
             }

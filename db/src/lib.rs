@@ -83,7 +83,7 @@ pub struct Database {
 impl Database {
     /// Create a new database at the given path.
     pub fn new(path: impl AsRef<Path>) -> rusqlite::Result<Self> {
-        info!("💾 [DB] opening SQLite connection");
+        info!("opening SQLite connection");
         let conn = Connection::open(path)?;
         Ok(Self::from_connection(conn))
     }
@@ -124,7 +124,7 @@ impl Database {
 
     /// Initialize the schemas of the database.
     fn init(&self) {
-        info!("📐 [DB] initializing schema");
+        info!("initializing schema");
 
         // Create tables only if they not exists
         self.conn
@@ -162,11 +162,11 @@ impl Database {
             .unwrap();
 
         // Run Migrations
-        debug!("⬆️ [DB] running migrations");
+        debug!("running migrations");
         migrations::V1::do_migration(&self.conn);
         migrations::V2::do_migration(&self.conn);
 
-        info!("✅ [DB] database ready");
+        info!("database ready");
     }
 
     pub fn track_new_account(
