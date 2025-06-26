@@ -4,6 +4,7 @@ use async_trait::async_trait;
 use once_cell::sync::Lazy;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
+use tracing::info;
 use urlencoding::encode;
 
 use crate::{
@@ -54,6 +55,7 @@ pub static DDRAGON_VERSION: Lazy<String> =
 
 pub fn init_ddragon_version() {
     Lazy::force(&DDRAGON_VERSION);
+    info!("Using Riot Ddragon assets v{}", DDRAGON_VERSION.as_str())
 }
 
 fn ddragon_version() -> &'static str {
