@@ -17,8 +17,8 @@ mod result_poller;
 
 #[tokio::main]
 async fn main() {
-    logging::init();
     dotenv().ok();
+    logging::init();
     init_ddragon_version();
 
     info!("🚀 Tentrackule starting");

@@ -64,6 +64,12 @@ Each component runs in its own Tokio task and failures are logged.
    # Optional: configure log verbosity (error, warn, info, debug, trace)
    RUST_LOG=info
 
+   # Optional: directory to store log files
+   LOG_DIR=./logs
+
+   # Optional: maximum number of log files to keep
+   LOG_MAX_FILES=7
+
    # Optional: polling interval in seconds for fetching new results
    POLL_INTERVAL_SECONDS=60
 
