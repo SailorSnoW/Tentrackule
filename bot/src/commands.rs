@@ -1,3 +1,5 @@
+//! Slash command implementations used by the Discord bot.
+
 use poise::serenity_prelude::ChannelType;
 use tentrackule_db::DatabaseExt;
 use tentrackule_riot_api::types::Region;

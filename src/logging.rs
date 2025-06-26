@@ -1,3 +1,5 @@
+//! Simple tracing subscriber setup used by the application.
+
 use tracing_subscriber::{fmt, EnvFilter};
 
 pub fn init() {

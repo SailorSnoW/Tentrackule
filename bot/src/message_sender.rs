@@ -1,3 +1,5 @@
+//! Abstraction used by the bot to send messages.
+
 use async_trait::async_trait;
 use poise::serenity_prelude::{self as serenity, ChannelId, CreateMessage};
 

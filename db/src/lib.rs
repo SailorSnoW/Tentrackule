@@ -1,3 +1,8 @@
+//! Database API definition and SQLite based storage layer used by the bot.
+//!
+//! This crate defines the [`Database`] type and helpers to interact with it
+//! asynchronously.
+
 use std::{collections::HashMap, env, path::Path, sync::Arc};
 
 use async_trait::async_trait;
@@ -17,8 +22,10 @@ pub mod types;
 
 mod migrations;
 
+/// Thread-safe wrapper around [`Database`] used across async tasks.
 pub type SharedDatabase = Arc<Mutex<Database>>;
 
+/// Convenience trait to run blocking database operations on a [`SharedDatabase`].
 #[async_trait]
 pub trait DatabaseExt {
     async fn run<F, T, E>(&self, f: F) -> Result<T, E>
@@ -67,6 +74,7 @@ impl DatabaseExt for SharedDatabase {
     }
 }
 
+/// Wrapper around a SQLite connection holding all persistent data.
 #[derive(Debug)]
 pub struct Database {
     conn: Connection,

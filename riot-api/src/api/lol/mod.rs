@@ -21,14 +21,17 @@ use match_v5::MatchDto;
 /// All APIs required for the entire LoL required scope of the bot.
 pub trait LolApiFull: LeagueApi + MatchApi + AccountApi {}
 
+/// High level client implementing all LoL related APIs used by the bot.
 #[derive(Debug)]
 pub struct LolApiClient(ApiClientBase);
 
 impl LolApiClient {
+    /// Create a new API client using the provided key.
     pub fn new(api_key: String) -> Self {
         Self(ApiClientBase::new(api_key))
     }
 
+    /// Spawn a task logging periodic metrics about requests.
     pub fn start_metrics_logging(&self) {
         let metrics = self.0.metrics.clone();
         tokio::spawn(async move { metrics.log_loop().await });
@@ -57,6 +60,7 @@ impl AccountApi for LolApiClient {
     }
 }
 
+/// Match data enriched with league information and cached LPs.
 #[derive(Debug, Clone)]
 pub struct MatchDtoWithLeagueInfo {
     pub match_data: MatchDto,

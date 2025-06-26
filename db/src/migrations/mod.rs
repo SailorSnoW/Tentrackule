@@ -1,3 +1,5 @@
+//! Database schema migrations.
+
 use rusqlite::Connection;
 
 mod v1;

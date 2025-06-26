@@ -1,3 +1,8 @@
+//! Discord bot implementation responsible for interacting with users.
+//!
+//! This crate exposes the [`DiscordBot`] type which wraps a Serenity client and
+//! provides the command handlers used to configure tracking.
+
 use commands::{current_alert_channel, set_alert_channel, show_tracked, track, untrack};
 use poise::serenity_prelude as serenity;
 use serenity::*;
@@ -16,10 +21,12 @@ mod handler;
 mod message_sender;
 
 // Types used by all command functions
+/// Error type shared by all slash commands.
 type Error = Box<dyn std::error::Error + Send + Sync>;
 #[allow(unused)]
 type Context<'a> = poise::Context<'a, Data, Error>;
 
+/// Wrapper around a Serenity [`Client`] with all command handlers registered.
 pub struct DiscordBot {
     pub client: Client,
 }
@@ -75,7 +82,7 @@ impl DiscordBot {
     }
 }
 
-// Custom user data passed to all command functions
+/// Custom data passed to all command functions.
 #[derive(Debug)]
 pub struct Data {
     db: SharedDatabase,

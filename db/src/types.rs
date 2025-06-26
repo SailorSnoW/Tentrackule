@@ -1,5 +1,6 @@
 use tentrackule_riot_api::types::{LeaguePoints, Region};
 
+/// Representation of an account tracked by the bot stored in the database.
 #[derive(Debug, Clone)]
 pub struct Account {
     pub puuid: String,

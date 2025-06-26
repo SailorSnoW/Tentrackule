@@ -1,3 +1,8 @@
+//! Entry point of the Tentrackule application.
+//!
+//! Initializes the various components and starts both the Discord bot and the
+//! result poller.
+
 use std::{env, sync::Arc};
 
 use dotenv::dotenv;

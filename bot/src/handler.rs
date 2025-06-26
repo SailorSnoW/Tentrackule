@@ -1,3 +1,5 @@
+//! Global event handler for the Discord client.
+
 use tracing::warn;
 
 use super::*;

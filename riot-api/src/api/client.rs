@@ -16,11 +16,13 @@ use crate::types::{RiotApiError, RiotApiResponse};
 
 use super::metrics::RequestMetrics;
 
+/// Trait implemented by structures capable of performing raw HTTP requests to the riot API.
 #[async_trait]
 pub trait ApiRequest: Send + Sync + Debug {
     async fn request(&self, path: String) -> RiotApiResponse<Bytes>;
 }
 
+/// Riot Account-V1 API as described in the official documentation.
 #[async_trait]
 pub trait AccountApi: ApiRequest {
     fn route(&self) -> &'static str {
@@ -49,6 +51,7 @@ pub trait AccountApi: ApiRequest {
     }
 }
 
+/// Basic HTTP client used to perform requests against Riot endpoints.
 #[derive(Debug)]
 pub struct ApiClientBase {
     pub client: reqwest::Client,
@@ -59,6 +62,7 @@ pub struct ApiClientBase {
 }
 
 impl ApiClientBase {
+    /// Create a new client using the provided Riot API key.
     pub fn new(api_key: String) -> Self {
         let q = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
 

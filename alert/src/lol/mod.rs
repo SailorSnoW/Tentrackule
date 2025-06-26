@@ -1,3 +1,5 @@
+//! Helpers to build Discord embeds for League of Legends matches.
+
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use tentrackule_riot_api::{
     api::types::{MatchDtoWithLeagueInfo, ParticipantDto},

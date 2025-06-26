@@ -1,3 +1,5 @@
+//! Periodically polls Riot servers for new match results and sends results to an alert dispatcher.
+
 use futures::{stream, StreamExt};
 use std::{
     env,

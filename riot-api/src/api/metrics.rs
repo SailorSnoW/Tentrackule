@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+/// Simple counter used to log the amount of Riot API requests performed.
 #[derive(Debug)]
 pub struct RequestMetrics {
     start: Instant,

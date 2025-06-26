@@ -8,21 +8,26 @@ use tracing::{error, warn};
 
 use super::*;
 
+/// Abstraction for dispatching alert messages to Discord.
 #[async_trait]
 pub trait AlertDispatch {
     async fn dispatch_alert(&self, puuid: &str, match_data: Box<dyn TryIntoAlert + Send + Sync>);
 }
 
+/// Implementation of [`AlertDispatch`] using a [`MessageSender`] and the database.
 pub struct AlertDispatcher {
     sender: Arc<dyn MessageSender + Send + Sync>,
     db: SharedDatabase,
 }
 
 impl AlertDispatcher {
+    /// Create a new dispatcher using the given message sender and database handle.
     pub fn new(sender: Arc<dyn MessageSender + Send + Sync>, db: SharedDatabase) -> Self {
         Self { sender, db }
     }
 
+    /// Retrieve the list of guilds tracking the specified player along with
+    /// their configured alert channel, if any.
     async fn get_guilds_for_account(&self, puuid: String) -> HashMap<GuildId, Option<ChannelId>> {
         match self.db.run(|db| db.get_guilds_for_puuid(puuid)).await {
             Ok(x) => x,
