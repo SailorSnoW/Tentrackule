@@ -8,6 +8,11 @@ use tracing::{error, warn};
 
 use super::*;
 
+#[async_trait]
+pub trait AlertDispatch {
+    async fn dispatch_alert(&self, puuid: &str, match_data: Box<dyn TryIntoAlert + Send + Sync>);
+}
+
 pub struct AlertDispatcher {
     sender: Arc<dyn MessageSender + Send + Sync>,
     db: SharedDatabase,
@@ -18,7 +23,23 @@ impl AlertDispatcher {
         Self { sender, db }
     }
 
-    pub async fn dispatch_alert(&self, puuid: &str, match_data: impl TryIntoAlert) {
+    async fn get_guilds_for_account(&self, puuid: String) -> HashMap<GuildId, Option<ChannelId>> {
+        match self.db.run(|db| db.get_guilds_for_puuid(puuid)).await {
+            Ok(x) => x,
+            Err(e) => {
+                error!(
+                    "❌ [ALERT] DB error while getting guilds for account: {}",
+                    e
+                );
+                HashMap::new()
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl AlertDispatch for AlertDispatcher {
+    async fn dispatch_alert(&self, puuid: &str, match_data: Box<dyn TryIntoAlert + Send + Sync>) {
         let alert = match match_data.try_into_alert(puuid) {
             Ok(alert) => alert,
             Err(reason) => {
@@ -50,19 +71,6 @@ impl AlertDispatcher {
                     );
                     continue;
                 }
-            }
-        }
-    }
-
-    async fn get_guilds_for_account(&self, puuid: String) -> HashMap<GuildId, Option<ChannelId>> {
-        match self.db.run(|db| db.get_guilds_for_puuid(puuid)).await {
-            Ok(x) => x,
-            Err(e) => {
-                error!(
-                    "❌ [ALERT] DB error while getting guilds for account: {}",
-                    e
-                );
-                HashMap::new()
             }
         }
     }
@@ -140,7 +148,7 @@ mod tests {
         let sender =
             AlertDispatcher::new(mock.clone() as Arc<dyn MessageSender + Send + Sync>, shared);
 
-        sender.dispatch_alert("puuid", DummyAlert).await;
+        sender.dispatch_alert("puuid", Box::new(DummyAlert)).await;
 
         let sent = mock.sent.lock().await;
         assert_eq!(&*sent, &[ChannelId::new(42)]);

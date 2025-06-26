@@ -8,7 +8,7 @@ use tracing::{error, info};
 
 use handler::event_handler;
 
-pub use alert_dispatcher::AlertDispatcher;
+pub use alert_dispatcher::{AlertDispatch, AlertDispatcher};
 
 mod alert_dispatcher;
 mod commands;

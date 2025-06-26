@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tentrackule_bot::AlertDispatcher;
+use tentrackule_bot::AlertDispatch;
 use tentrackule_db::{types::Account, DatabaseExt, SharedDatabase};
 use tentrackule_riot_api::{
     api::{
@@ -19,7 +19,7 @@ use tracing::{debug, error, info, warn};
 pub struct ResultPoller {
     lol_api: Arc<dyn LolApiFull>,
     db: SharedDatabase,
-    alert_dispatcher: AlertDispatcher,
+    alert_dispatcher: Arc<dyn AlertDispatch + Send + Sync>,
     start_time: u128,
     poll_interval: Duration,
 }
@@ -28,7 +28,7 @@ impl ResultPoller {
     pub fn new(
         lol_api: Arc<dyn LolApiFull>,
         db: SharedDatabase,
-        alert_dispatcher: AlertDispatcher,
+        alert_dispatcher: Arc<dyn AlertDispatch + Send + Sync>,
     ) -> Self {
         let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
             .ok()
@@ -161,7 +161,11 @@ impl ResultPoller {
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league_points),
+                        Box::new(MatchDtoWithLeagueInfo::new(
+                            match_data,
+                            league,
+                            cached_league_points,
+                        )),
                     )
                     .await;
             }
@@ -173,7 +177,7 @@ impl ResultPoller {
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, None, None),
+                        Box::new(MatchDtoWithLeagueInfo::new(match_data, None, None)),
                     )
                     .await;
             }
