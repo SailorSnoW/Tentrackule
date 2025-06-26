@@ -1,7 +1,6 @@
-use std::env;
+use std::{env, sync::LazyLock};
 
 use async_trait::async_trait;
-use once_cell::sync::Lazy;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
 use tracing::info;
@@ -50,11 +49,11 @@ pub trait MatchApi: ApiRequest {
 }
 
 /// Loaded once at startup to avoid repeated environment lookups.
-pub static DDRAGON_VERSION: Lazy<String> =
-    Lazy::new(|| env::var("DDRAGON_VERSION").unwrap_or_else(|_| "15.12.1".to_string()));
+pub static DDRAGON_VERSION: LazyLock<String> =
+    LazyLock::new(|| env::var("DDRAGON_VERSION").unwrap_or_else(|_| "15.12.1".to_string()));
 
 pub fn init_ddragon_version() {
-    Lazy::force(&DDRAGON_VERSION);
+    LazyLock::force(&DDRAGON_VERSION);
     info!("Using Riot Ddragon assets v{}", DDRAGON_VERSION.as_str())
 }
 

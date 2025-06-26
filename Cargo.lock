@@ -2205,6 +2205,7 @@ name = "tentrackule-alert"
 version = "0.1.0"
 dependencies = [
  "poise",
+ "serde_json",
  "tentrackule-riot-api",
  "thiserror 2.0.12",
 ]
@@ -2246,7 +2247,6 @@ dependencies = [
  "governor",
  "log",
  "nonzero_ext",
- "once_cell",
  "poise",
  "reqwest 0.12.20",
  "serde",
