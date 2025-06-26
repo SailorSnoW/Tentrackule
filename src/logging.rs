@@ -1,6 +1,6 @@
 //! Simple tracing subscriber setup used by the application.
 
-use std::env;
+use std::{env, sync::OnceLock};
 
 use tracing_appender::{
     non_blocking,
@@ -12,7 +12,7 @@ use tracing_subscriber::{
 };
 
 /// Guard to ensure buffered logs are flushed on shutdown.
-static mut LOG_GUARD: Option<non_blocking::WorkerGuard> = None;
+static LOG_GUARD: OnceLock<non_blocking::WorkerGuard> = OnceLock::new();
 
 pub fn init() {
     let env_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
@@ -41,10 +41,7 @@ pub fn init() {
 
         let (file_writer, guard) = non_blocking(file_appender);
 
-        // Safety: the guard is stored globally to flush logs on exit.
-        unsafe {
-            LOG_GUARD = Some(guard);
-        }
+        LOG_GUARD.set(guard).expect("LOG_GUARD already set");
 
         let stdout = std::io::stdout.with_max_level(tracing::Level::INFO);
         let writer = stdout.and(file_writer);
