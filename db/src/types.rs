@@ -8,6 +8,11 @@ pub struct Account {
     pub tag_line: String,
     pub region: Region,
     pub last_match_id: String,
-    /// Cached league points for the `RANKED_SOLO_5x5` queue.
-    pub cached_league_points: Option<LeaguePoints>,
+}
+
+#[derive(Debug, Clone)]
+pub struct League {
+    pub points: LeaguePoints,
+    pub wins: u16,
+    pub losses: u16,
 }

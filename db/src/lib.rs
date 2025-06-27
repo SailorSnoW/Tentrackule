@@ -11,7 +11,7 @@ use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{params, Connection, OptionalExtension};
 use tokio::sync::Mutex;
 use tracing::{debug, info};
-use types::Account;
+use types::{Account, League};
 
 use tentrackule_riot_api::{
     api::types::AccountDto,
@@ -165,6 +165,7 @@ impl Database {
         debug!("running migrations");
         migrations::V1::do_migration(&self.conn);
         migrations::V2::do_migration(&self.conn);
+        migrations::V3::do_migration(&self.conn);
 
         info!("database ready");
     }
@@ -221,6 +222,8 @@ impl Database {
                 [puuid.clone()],
             )?;
             self.conn
+                .execute("DELETE FROM leagues WHERE puuid = ?1", [puuid.clone()])?;
+            self.conn
                 .execute("DELETE FROM accounts WHERE puuid = ?1", [puuid])?;
         }
 
@@ -266,6 +269,53 @@ impl Database {
         Ok(())
     }
 
+    pub fn get_league_points(
+        &self,
+        puuid: String,
+        queue_type: QueueType,
+    ) -> rusqlite::Result<Option<LeaguePoints>> {
+        self.conn
+            .query_row(
+                "SELECT league_points FROM league_points WHERE puuid = ?1 AND queue_type = ?2",
+                params![puuid, queue_type.as_str()],
+                |row| row.get(0),
+            )
+            .optional()
+    }
+
+    pub fn update_league(
+        &self,
+        puuid: String,
+        queue_type: QueueType,
+        league: League,
+    ) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO leagues (puuid, queue_type, points, wins, losses) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![puuid, queue_type.as_str(), league.points, league.wins, league.losses],
+        )?;
+        Ok(())
+    }
+
+    pub fn get_league(
+        &self,
+        puuid: String,
+        queue_type: QueueType,
+    ) -> rusqlite::Result<Option<League>> {
+        self.conn
+            .query_row(
+                "SELECT points, wins, losses FROM leagues WHERE puuid = ?1 AND queue_type = ?2",
+                params![puuid, queue_type.as_str()],
+                |row| {
+                    Ok(League {
+                        points: row.get(0)?,
+                        wins: row.get(1)?,
+                        losses: row.get(2)?,
+                    })
+                },
+            )
+            .optional()
+    }
+
     pub fn update_league_points(
         &self,
         puuid: String,
@@ -278,11 +328,9 @@ impl Database {
     }
 
     pub fn get_all_accounts(&self) -> rusqlite::Result<Vec<Account>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id, lp.league_points
-            FROM accounts a
-            LEFT JOIN league_points lp ON a.puuid = lp.puuid AND lp.queue_type = 'RANKED_SOLO_5x5'",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT puuid, game_name, tag_line, region, last_match_id FROM accounts")?;
 
         let rows = stmt.query_map([], |row| {
             Ok(Account {
@@ -294,7 +342,6 @@ impl Database {
                     s.try_into().unwrap()
                 },
                 last_match_id: row.get(4)?,
-                cached_league_points: row.get(5)?,
             })
         })?;
 
@@ -305,10 +352,9 @@ impl Database {
         let guild_id_str = guild_id.to_string();
 
         let mut stmt = self.conn.prepare(
-            "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id, lp.league_points
+            "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id
             FROM accounts a
             INNER JOIN account_guilds ag ON a.puuid = ag.puuid
-            LEFT JOIN league_points lp ON a.puuid = lp.puuid AND lp.queue_type = 'RANKED_SOLO_5x5'
             WHERE ag.guild_id = ?",
         )?;
 
@@ -322,7 +368,6 @@ impl Database {
                     s.try_into().unwrap()
                 },
                 last_match_id: row.get(4)?,
-                cached_league_points: row.get(5)?,
             })
         })?;
 
@@ -361,6 +406,7 @@ mod tests {
     use super::*;
     use poise::serenity_prelude::{ChannelId, GuildId};
     use tentrackule_riot_api::types::Region;
+    use types::League;
 
     fn setup_db() -> Database {
         let conn = Connection::open_in_memory().unwrap();
@@ -438,5 +484,29 @@ mod tests {
         assert_eq!(accounts[0].last_match_id, "match1");
         assert_eq!(accounts[0].game_name, "player2");
         assert_eq!(accounts[0].region, Region::Eune);
+    }
+
+    #[test]
+    fn store_and_get_league() {
+        let mut db = setup_db();
+        db.track_new_account(sample_account(), Region::Euw, GuildId::new(1))
+            .unwrap();
+
+        let league = League {
+            points: 120,
+            wins: 10,
+            losses: 5,
+        };
+        db.update_league("puuid".into(), QueueType::SoloDuo, league.clone())
+            .unwrap();
+
+        let fetched = db
+            .get_league("puuid".into(), QueueType::SoloDuo)
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(fetched.points, league.points);
+        assert_eq!(fetched.wins, league.wins);
+        assert_eq!(fetched.losses, league.losses);
     }
 }

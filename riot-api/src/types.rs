@@ -12,6 +12,12 @@ pub enum RiotApiError {
     Serde(serde_json::Error),
 }
 
+#[derive(Debug, Error)]
+pub enum RiotMatchError {
+    #[error("The request account puuid is not part of the match")]
+    PuuidNotInMatch,
+}
+
 /// A call to Riot API can either result in a success with the success type or fail with a [`RiotApiError`].
 pub type RiotApiResponse<T> = Result<T, RiotApiError>;
 
@@ -114,6 +120,8 @@ impl TryFrom<String> for Region {
 pub enum QueueType {
     /// Ranked Solo/Duo
     SoloDuo,
+    /// Ranked Flex
+    Flex,
     /// 5v5 Normal Draft Picks
     NormalDraft,
     /// 5v5 Howling Abyss ARAM
@@ -126,6 +134,7 @@ impl From<u16> for QueueType {
         match value {
             400 => Self::NormalDraft,
             420 => Self::SoloDuo,
+            440 => Self::Flex,
             450 => Self::Aram,
             _ => Self::Unhandled,
         }
@@ -136,6 +145,7 @@ impl QueueType {
     pub fn as_str(&self) -> &'static str {
         match self {
             QueueType::SoloDuo => "RANKED_SOLO_5x5",
+            QueueType::Flex => "RANKED_FLEX_SR",
             QueueType::NormalDraft => "", // No league queue type
             QueueType::Aram => "",        // No league queue type
             QueueType::Unhandled => "UNHANDLED",

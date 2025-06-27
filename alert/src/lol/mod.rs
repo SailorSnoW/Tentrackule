@@ -19,6 +19,7 @@ impl TryIntoAlert for MatchDtoWithLeagueInfo {
 
         match self.match_data.queue_type() {
             QueueType::SoloDuo => Ok(solo_duo_ranked_alert(focused_participant, self)),
+            QueueType::Flex => Ok(flex_ranked_alert(focused_participant, self)),
             QueueType::NormalDraft => Ok(draft_normal_alert(focused_participant, self)),
             QueueType::Aram => Ok(aram_alert(focused_participant, self)),
             QueueType::Unhandled => Err(AlertCreationError::UnsupportedQueueType {
@@ -71,13 +72,27 @@ fn solo_duo_ranked_alert(
 ) -> CreateEmbed {
     let author = CreateEmbedAuthor::new("[LoL] Solo/Duo Queue")
         .icon_url(focused_participant.to_profile_icon_picture_url());
-    let mut embed = base(focused_participant, match_data, true)
-        .author(author)
-        .description(format!(
-            "**{}** just {} a ranked game !",
-            focused_participant.riot_id_game_name,
-            focused_participant.to_formatted_win_string(),
-        ));
+    ranked_alert(focused_participant, match_data).author(author)
+}
+
+fn flex_ranked_alert(
+    focused_participant: &ParticipantDto,
+    match_data: &MatchDtoWithLeagueInfo,
+) -> CreateEmbed {
+    let author = CreateEmbedAuthor::new("[LoL] Flex Queue")
+        .icon_url(focused_participant.to_profile_icon_picture_url());
+    ranked_alert(focused_participant, match_data).author(author)
+}
+
+fn ranked_alert(
+    focused_participant: &ParticipantDto,
+    match_data: &MatchDtoWithLeagueInfo,
+) -> CreateEmbed {
+    let mut embed = base(focused_participant, match_data, true).description(format!(
+        "**{}** just {} a ranked game !",
+        focused_participant.riot_id_game_name,
+        focused_participant.to_formatted_win_string(),
+    ));
 
     // Rank informations
     if match_data.league_data.is_some() {
@@ -179,6 +194,8 @@ mod tests {
             tier: "GOLD".to_string(),
             rank: "IV".to_string(),
             league_points: lp,
+            wins: 13,
+            losses: 12,
         }
     }
 

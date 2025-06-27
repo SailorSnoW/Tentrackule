@@ -49,6 +49,8 @@ fn league_entry(lp: u16) -> LeagueEntryDto {
         tier: "GOLD".to_string(),
         rank: "IV".to_string(),
         league_points: lp,
+        wins: 13,
+        losses: 12,
     }
 }
 
@@ -74,7 +76,7 @@ async fn send_sample_alerts() {
     let http = Http::new(&token);
     let channel = ChannelId::new(channel_id);
 
-    for (queue, ranked) in [(420, true), (400, false), (450, false)] {
+    for (queue, ranked) in [(420, true), (400, false), (440, true), (450, false)] {
         let match_info = setup_match(queue, ranked);
         let embed = match_info.try_into_alert("abc").unwrap();
         channel

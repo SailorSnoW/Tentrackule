@@ -89,10 +89,7 @@ impl ResultPoller {
     }
 
     async fn process_account(&self, account: Account) {
-        debug!(
-            "🔍 [POLL] checking {}#{}",
-            account.game_name, account.tag_line
-        );
+        debug!("checking {}#{}", account.game_name, account.tag_line);
         let Some(new_match_id) = self
             .fetch_new_match_id(account.puuid.clone(), account.region.clone())
             .await
@@ -133,7 +130,9 @@ impl ResultPoller {
     async fn dispatch_alert_if_needed(&self, account: Account, match_data: MatchDto) {
         match match_data.queue_type() {
             QueueType::SoloDuo => {
-                let cached_league_points = account.cached_league_points;
+                let cached_league_points = self
+                    .get_cached_league_points(account.puuid.clone(), QueueType::SoloDuo)
+                    .await;
                 let league = self
                     .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
                     .await;
@@ -146,6 +145,44 @@ impl ResultPoller {
                     self.update_league_points(
                         account.puuid.clone(),
                         QueueType::SoloDuo,
+                        x.league_points,
+                    )
+                    .await;
+                } else {
+                    warn!("league data missing");
+                }
+
+                debug!(
+                    "dispatching alert for {}#{}",
+                    account.game_name, account.tag_line
+                );
+                self.alert_dispatcher
+                    .dispatch_alert(
+                        &account.puuid,
+                        Box::new(MatchDtoWithLeagueInfo::new(
+                            match_data,
+                            league,
+                            cached_league_points,
+                        )),
+                    )
+                    .await;
+            }
+            QueueType::Flex => {
+                let cached_league_points = self
+                    .get_cached_league_points(account.puuid.clone(), QueueType::Flex)
+                    .await;
+                let league = self
+                    .get_ranked_flex_league(account.puuid.clone(), account.region)
+                    .await;
+
+                if let Some(x) = &league {
+                    debug!(
+                        "updating league points to {} for {}#{}",
+                        x.league_points, account.game_name, account.tag_line
+                    );
+                    self.update_league_points(
+                        account.puuid.clone(),
+                        QueueType::Flex,
                         x.league_points,
                     )
                     .await;
@@ -236,6 +273,24 @@ impl ResultPoller {
         }
     }
 
+    async fn get_cached_league_points(
+        &self,
+        puuid: String,
+        queue_type: QueueType,
+    ) -> Option<LeaguePoints> {
+        match self
+            .db
+            .run(move |db| db.get_league_points(puuid, queue_type))
+            .await
+        {
+            Ok(res) => res,
+            Err(e) => {
+                error!("Failed to send DB request: {}", e);
+                None
+            }
+        }
+    }
+
     async fn get_ranked_solo_duo_league(
         &self,
         puuid: String,
@@ -253,5 +308,22 @@ impl ResultPoller {
         leagues
             .into_iter()
             .find(|league| league.is_ranked_solo_duo())
+    }
+
+    async fn get_ranked_flex_league(
+        &self,
+        puuid: String,
+        region: Region,
+    ) -> Option<LeagueEntryDto> {
+        let request = self.lol_api.get_leagues(puuid, region).await;
+        let leagues = match request {
+            Ok(l) => l,
+            Err(e) => {
+                error!("Riot API error while fetching last match: {:?}", e);
+                None
+            }?,
+        };
+
+        leagues.into_iter().find(|league| league.is_ranked_flex())
     }
 }

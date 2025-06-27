@@ -34,10 +34,16 @@ pub struct LeagueEntryDto {
     pub tier: String,
     pub rank: String,
     pub league_points: LeaguePoints,
+    pub wins: u16,
+    pub losses: u16,
 }
 
 impl LeagueEntryDto {
     pub fn is_ranked_solo_duo(&self) -> bool {
         self.queue_type.eq("RANKED_SOLO_5x5")
+    }
+
+    pub fn is_ranked_flex(&self) -> bool {
+        self.queue_type.eq("RANKED_FLEX_SR")
     }
 }

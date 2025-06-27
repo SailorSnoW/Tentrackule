@@ -115,6 +115,8 @@ mod tests {
             tier: "GOLD".to_string(),
             rank: "IV".to_string(),
             league_points: lp,
+            wins: 13,
+            losses: 12,
         }
     }
     #[test]
