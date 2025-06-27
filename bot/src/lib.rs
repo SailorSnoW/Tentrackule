@@ -13,7 +13,7 @@ use tracing::{error, info};
 
 use handler::event_handler;
 
-pub use alert_dispatcher::{AlertDispatch, AlertDispatcher};
+pub use alert_dispatcher::{AlertDispatch, AlertDispatcher, DiscordAlertDispatcher};
 
 mod alert_dispatcher;
 mod commands;

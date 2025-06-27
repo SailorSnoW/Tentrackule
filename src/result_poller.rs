@@ -18,20 +18,24 @@ use tentrackule_riot_api::{
 use tracing::{debug, error, info, warn};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
-pub struct ResultPoller {
-    lol_api: Arc<dyn LolApiFull>,
+pub struct ResultPoller<LA, AD>
+where
+    LA: LolApiFull,
+    AD: AlertDispatch,
+{
+    lol_api: Arc<LA>,
     db: SharedDatabase,
-    alert_dispatcher: Arc<dyn AlertDispatch + Send + Sync>,
+    alert_dispatcher: AD,
     start_time: u128,
     poll_interval: Duration,
 }
 
-impl ResultPoller {
-    pub fn new(
-        lol_api: Arc<dyn LolApiFull>,
-        db: SharedDatabase,
-        alert_dispatcher: Arc<dyn AlertDispatch + Send + Sync>,
-    ) -> Self {
+impl<LA, AD> ResultPoller<LA, AD>
+where
+    LA: LolApiFull + Send + Sync + 'static,
+    AD: AlertDispatch + Sync + Send + 'static,
+{
+    pub fn new(lol_api: Arc<LA>, db: SharedDatabase, alert_dispatcher: AD) -> Self {
         let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -159,11 +163,7 @@ impl ResultPoller {
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        Box::new(MatchDtoWithLeagueInfo::new(
-                            match_data,
-                            league,
-                            cached_league_points,
-                        )),
+                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league_points),
                     )
                     .await;
             }
@@ -197,11 +197,7 @@ impl ResultPoller {
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        Box::new(MatchDtoWithLeagueInfo::new(
-                            match_data,
-                            league,
-                            cached_league_points,
-                        )),
+                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league_points),
                     )
                     .await;
             }
@@ -213,7 +209,7 @@ impl ResultPoller {
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        Box::new(MatchDtoWithLeagueInfo::new(match_data, None, None)),
+                        MatchDtoWithLeagueInfo::new(match_data, None, None),
                     )
                     .await;
             }

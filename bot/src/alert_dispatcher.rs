@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::sync::Arc;
 
 use message_sender::MessageSender;
 use tentrackule_alert::TryIntoAlert;
@@ -11,18 +10,23 @@ use super::*;
 /// Abstraction for dispatching alert messages to Discord.
 #[async_trait]
 pub trait AlertDispatch {
-    async fn dispatch_alert(&self, puuid: &str, match_data: Box<dyn TryIntoAlert + Send + Sync>);
+    async fn dispatch_alert<T>(&self, puuid: &str, match_data: T)
+    where
+        T: TryIntoAlert + Send + Sync;
 }
 
+/// An AlertDispatcher which use a discord Http client to send alerts.
+pub type DiscordAlertDispatcher = AlertDispatcher<Arc<Http>>;
+
 /// Implementation of [`AlertDispatch`] using a [`MessageSender`] and the database.
-pub struct AlertDispatcher {
-    sender: Arc<dyn MessageSender + Send + Sync>,
+pub struct AlertDispatcher<S: MessageSender> {
+    sender: Arc<S>,
     db: SharedDatabase,
 }
 
-impl AlertDispatcher {
+impl<S: MessageSender> AlertDispatcher<S> {
     /// Create a new dispatcher using the given message sender and database handle.
-    pub fn new(sender: Arc<dyn MessageSender + Send + Sync>, db: SharedDatabase) -> Self {
+    pub fn new(sender: Arc<S>, db: SharedDatabase) -> Self {
         Self { sender, db }
     }
 
@@ -40,8 +44,11 @@ impl AlertDispatcher {
 }
 
 #[async_trait]
-impl AlertDispatch for AlertDispatcher {
-    async fn dispatch_alert(&self, puuid: &str, match_data: Box<dyn TryIntoAlert + Send + Sync>) {
+impl<S: MessageSender> AlertDispatch for AlertDispatcher<S> {
+    async fn dispatch_alert<T>(&self, puuid: &str, match_data: T)
+    where
+        T: TryIntoAlert + Send + Sync,
+    {
         let alert = match match_data.try_into_alert(puuid) {
             Ok(alert) => alert,
             Err(reason) => {
@@ -144,10 +151,9 @@ mod tests {
 
         let shared: SharedDatabase = Arc::new(TokioMutex::new(db));
         let mock = Arc::new(MockSender::default());
-        let sender =
-            AlertDispatcher::new(mock.clone() as Arc<dyn MessageSender + Send + Sync>, shared);
+        let sender = AlertDispatcher::new(mock.clone(), shared);
 
-        sender.dispatch_alert("puuid", Box::new(DummyAlert)).await;
+        sender.dispatch_alert("puuid", DummyAlert).await;
 
         let sent = mock.sent.lock().await;
         assert_eq!(&*sent, &[ChannelId::new(42)]);

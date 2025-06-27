@@ -1,5 +1,7 @@
 //! Abstraction used by the bot to send messages.
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use poise::serenity_prelude::{self as serenity, ChannelId, CreateMessage};
 
@@ -11,7 +13,7 @@ pub trait MessageSender: Send + Sync {
 }
 
 #[async_trait]
-impl MessageSender for serenity::Http {
+impl MessageSender for Arc<serenity::Http> {
     async fn send_message(
         &self,
         channel_id: ChannelId,
