@@ -11,3 +11,4 @@ tracing = "0.1"
 async-trait = "0.1"
 
 tentrackule-riot-api = { path = "../riot-api" }
+tentrackule-types = { path = "../types/" }

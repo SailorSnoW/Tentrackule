@@ -21,11 +21,13 @@ tentrackule-riot-api = { path = "./riot-api" }
 tentrackule-db = { path = "./db" }
 tentrackule-bot = { path = "./bot" }
 tentrackule-alert = { path = "./alert" }
+tentrackule-types = { path = "./types/" }
 
 [workspace]
 members = [
     "riot-api",
     "db",
     "bot",
-    "alert"
+    "alert",
+    "types"
 ]

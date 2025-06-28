@@ -1,10 +1,8 @@
 //! Helpers to build Discord embeds for League of Legends matches.
 
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
-use tentrackule_riot_api::{
-    api::types::{MatchDtoWithLeagueInfo, ParticipantDto},
-    types::QueueType,
-};
+use tentrackule_riot_api::api::types::{MatchDtoWithLeagueInfo, ParticipantDto};
+use tentrackule_types::QueueType;
 
 use crate::{Alert, AlertCreationError, TryIntoAlert};
 
@@ -95,14 +93,14 @@ fn ranked_alert(
     ));
 
     // Rank informations
-    if match_data.league_data.is_some() {
+    if match_data.current_league.is_some() {
         embed = embed.fields(vec![(
             "Rank",
             format!(
                 "{} {} ({} LPs)",
-                match_data.league_data.clone().unwrap().tier,
-                match_data.league_data.clone().unwrap().rank,
-                match_data.league_data.clone().unwrap().league_points
+                match_data.current_league.clone().unwrap().tier,
+                match_data.current_league.clone().unwrap().rank,
+                match_data.current_league.clone().unwrap().league_points
             ),
             false,
         )]);
@@ -149,6 +147,7 @@ mod tests {
     use tentrackule_riot_api::api::types::{
         LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo, ParticipantDto,
     };
+    use tentrackule_types::League;
 
     fn dummy_participant(puuid: &str) -> ParticipantDto {
         ParticipantDto {
@@ -199,11 +198,19 @@ mod tests {
         }
     }
 
+    fn cached_league_entry(lp: u16) -> League {
+        League {
+            points: lp,
+            wins: 13,
+            losses: 12,
+        }
+    }
+
     fn setup_match(queue: u16, with_league: bool) -> MatchDtoWithLeagueInfo {
         let participant = dummy_participant("abc");
         let match_data = dummy_match(queue, &participant);
         let league = with_league.then(|| league_entry(120));
-        MatchDtoWithLeagueInfo::new(match_data, league, Some(100))
+        MatchDtoWithLeagueInfo::new(match_data, league, Some(cached_league_entry(100)))
     }
 
     #[test]
@@ -212,7 +219,7 @@ mod tests {
         let match_info = MatchDtoWithLeagueInfo::new(
             dummy_match(420, &participant),
             Some(league_entry(120)),
-            Some(100),
+            Some(cached_league_entry(100)),
         );
 
         let embed_with_role = super::base(&participant, &match_info, true);

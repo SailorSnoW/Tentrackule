@@ -4,6 +4,7 @@ use tentrackule_alert::TryIntoAlert;
 use tentrackule_riot_api::api::types::{
     LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo, ParticipantDto,
 };
+use tentrackule_types::League;
 
 fn dummy_participant(puuid: &str) -> ParticipantDto {
     ParticipantDto {
@@ -54,11 +55,19 @@ fn league_entry(lp: u16) -> LeagueEntryDto {
     }
 }
 
+fn cached_league_entry(lp: u16) -> League {
+    League {
+        points: lp,
+        wins: 13,
+        losses: 12,
+    }
+}
+
 fn setup_match(queue: u16, with_league: bool) -> MatchDtoWithLeagueInfo {
     let participant = dummy_participant("abc");
     let match_data = dummy_match(queue, &participant);
-    let league = with_league.then(|| league_entry(120));
-    MatchDtoWithLeagueInfo::new(match_data, league, Some(100))
+    let current_league = with_league.then(|| league_entry(120));
+    MatchDtoWithLeagueInfo::new(match_data, current_league, Some(cached_league_entry(100)))
 }
 
 #[tokio::test]

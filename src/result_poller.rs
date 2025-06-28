@@ -7,14 +7,12 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tentrackule_bot::AlertDispatch;
-use tentrackule_db::{types::Account, DatabaseExt, SharedDatabase};
-use tentrackule_riot_api::{
-    api::{
-        types::{LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo},
-        LolApiFull,
-    },
-    types::{LeaguePoints, QueueType, Region},
+use tentrackule_db::{DatabaseExt, SharedDatabase};
+use tentrackule_riot_api::api::{
+    types::{LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo},
+    LolApiFull,
 };
+use tentrackule_types::{Account, League, QueueType, Region};
 use tracing::{debug, error, info, warn};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
@@ -134,24 +132,20 @@ where
     async fn dispatch_alert_if_needed(&self, account: Account, match_data: MatchDto) {
         match match_data.queue_type() {
             QueueType::SoloDuo => {
-                let cached_league_points = self
-                    .get_cached_league_points(account.puuid.clone(), QueueType::SoloDuo)
+                let cached_league = self
+                    .get_cached_league(account.puuid.clone(), QueueType::SoloDuo)
                     .await;
                 let league = self
                     .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
                     .await;
 
-                if let Some(x) = &league {
+                if let Some(x) = league.clone() {
                     debug!(
-                        "updating league points to {} for {}#{}",
+                        "updating league to {} for {}#{}",
                         x.league_points, account.game_name, account.tag_line
                     );
-                    self.update_league_points(
-                        account.puuid.clone(),
-                        QueueType::SoloDuo,
-                        x.league_points,
-                    )
-                    .await;
+                    self.update_league(account.puuid.clone(), QueueType::SoloDuo, x)
+                        .await;
                 } else {
                     warn!("league data missing");
                 }
@@ -163,29 +157,25 @@ where
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league_points),
+                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league),
                     )
                     .await;
             }
             QueueType::Flex => {
-                let cached_league_points = self
-                    .get_cached_league_points(account.puuid.clone(), QueueType::Flex)
+                let cached_league = self
+                    .get_cached_league(account.puuid.clone(), QueueType::Flex)
                     .await;
                 let league = self
                     .get_ranked_flex_league(account.puuid.clone(), account.region)
                     .await;
 
-                if let Some(x) = &league {
+                if let Some(x) = league.clone() {
                     debug!(
-                        "updating league points to {} for {}#{}",
-                        x.league_points, account.game_name, account.tag_line
+                        "updating league to {:?} for {}#{}",
+                        x, account.game_name, account.tag_line
                     );
-                    self.update_league_points(
-                        account.puuid.clone(),
-                        QueueType::Flex,
-                        x.league_points,
-                    )
-                    .await;
+                    self.update_league(account.puuid.clone(), QueueType::Flex, x)
+                        .await;
                 } else {
                     warn!("league data missing");
                 }
@@ -197,7 +187,7 @@ where
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league_points),
+                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league),
                     )
                     .await;
             }
@@ -243,15 +233,10 @@ where
         }
     }
 
-    async fn update_league_points(
-        &self,
-        puuid: String,
-        queue_type: QueueType,
-        league_points: LeaguePoints,
-    ) {
+    async fn update_league(&self, puuid: String, queue_type: QueueType, league: LeagueEntryDto) {
         if let Err(e) = self
             .db
-            .run(move |db| db.update_league_points(puuid, queue_type, league_points))
+            .run(move |db| db.update_league(puuid, queue_type, league.into()))
             .await
         {
             error!("Failed to send DB request: {}", e);
@@ -269,14 +254,10 @@ where
         }
     }
 
-    async fn get_cached_league_points(
-        &self,
-        puuid: String,
-        queue_type: QueueType,
-    ) -> Option<LeaguePoints> {
+    async fn get_cached_league(&self, puuid: String, queue_type: QueueType) -> Option<League> {
         match self
             .db
-            .run(move |db| db.get_league_points(puuid, queue_type))
+            .run(move |db| db.get_league(puuid, queue_type))
             .await
         {
             Ok(res) => res,

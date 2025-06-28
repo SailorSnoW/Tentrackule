@@ -9,16 +9,11 @@ use async_trait::async_trait;
 use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{params, Connection, OptionalExtension};
+use tentrackule_types::{Account, League, QueueType, Region};
 use tokio::sync::Mutex;
 use tracing::{debug, info};
-use types::{Account, League};
 
-use tentrackule_riot_api::{
-    api::types::AccountDto,
-    types::{LeaguePoints, QueueType, Region},
-};
-
-pub mod types;
+use tentrackule_riot_api::api::types::AccountDto;
 
 mod migrations;
 
@@ -269,20 +264,6 @@ impl Database {
         Ok(())
     }
 
-    pub fn get_league_points(
-        &self,
-        puuid: String,
-        queue_type: QueueType,
-    ) -> rusqlite::Result<Option<LeaguePoints>> {
-        self.conn
-            .query_row(
-                "SELECT league_points FROM league_points WHERE puuid = ?1 AND queue_type = ?2",
-                params![puuid, queue_type.as_str()],
-                |row| row.get(0),
-            )
-            .optional()
-    }
-
     pub fn update_league(
         &self,
         puuid: String,
@@ -314,17 +295,6 @@ impl Database {
                 },
             )
             .optional()
-    }
-
-    pub fn update_league_points(
-        &self,
-        puuid: String,
-        queue_type: QueueType,
-        league_points: LeaguePoints,
-    ) -> rusqlite::Result<()> {
-        self.conn.execute("INSERT OR REPLACE INTO league_points (puuid, queue_type, league_points) VALUES (?1, ?2, ?3)",
-            params![puuid, queue_type.as_str(), league_points])?;
-        Ok(())
     }
 
     pub fn get_all_accounts(&self) -> rusqlite::Result<Vec<Account>> {
@@ -405,8 +375,6 @@ impl Database {
 mod tests {
     use super::*;
     use poise::serenity_prelude::{ChannelId, GuildId};
-    use tentrackule_riot_api::types::Region;
-    use types::League;
 
     fn setup_db() -> Database {
         let conn = Connection::open_in_memory().unwrap();

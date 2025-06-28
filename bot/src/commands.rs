@@ -2,7 +2,7 @@
 
 use poise::serenity_prelude::ChannelType;
 use tentrackule_db::DatabaseExt;
-use tentrackule_riot_api::types::Region;
+use tentrackule_types::Region;
 use tracing::{debug, info};
 
 use super::{serenity, Context, Error};

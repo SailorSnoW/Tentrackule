@@ -3,12 +3,13 @@ use std::{env, sync::LazyLock};
 use async_trait::async_trait;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
+use tentrackule_types::{QueueType, Region};
 use tracing::info;
 use urlencoding::encode;
 
 use crate::{
     api::client::ApiRequest,
-    types::{QueueType, Region, RiotApiError, RiotApiResponse},
+    types::{RiotApiError, RiotApiResponse},
 };
 
 #[async_trait]

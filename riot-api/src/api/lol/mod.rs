@@ -3,7 +3,8 @@ use bytes::Bytes;
 use std::fmt::Debug;
 use tracing::warn;
 
-use crate::types::{LeaguePoints, RiotApiResponse};
+use crate::types::RiotApiResponse;
+use tentrackule_types::League;
 
 use super::{
     client::{AccountApi, ApiClientBase, ApiRequest},
@@ -64,37 +65,37 @@ impl AccountApi for LolApiClient {
 #[derive(Debug, Clone)]
 pub struct MatchDtoWithLeagueInfo {
     pub match_data: MatchDto,
-    pub league_data: Option<LeagueEntryDto>,
-    pub cached_league_points: Option<LeaguePoints>,
+    pub current_league: Option<LeagueEntryDto>,
+    pub cached_league: Option<League>,
 }
 
 impl MatchDtoWithLeagueInfo {
     pub fn new(
         match_data: MatchDto,
-        league_data: Option<LeagueEntryDto>,
-        cached_league_points: Option<LeaguePoints>,
+        current_league: Option<LeagueEntryDto>,
+        cached_league: Option<League>,
     ) -> Self {
         Self {
             match_data,
-            league_data,
-            cached_league_points,
+            current_league,
+            cached_league,
         }
     }
 
     /// Calculate the gain/loss of LP between the cached value and the new match data.
     /// Returns a positive number for LP gain, negative for LP loss, or None if data is missing.
     pub fn calculate_league_points_difference(&self, won: bool) -> Option<i16> {
-        let Some(league_data) = &self.league_data else {
+        let Some(current_league) = &self.current_league else {
             warn!("no league data for LP diff");
             return None;
         };
 
-        let Some(cached) = self.cached_league_points else {
+        let Some(cached) = &self.cached_league else {
             warn!("cached LPs missing, diff ignored");
             return None;
         };
 
-        let mut diff = league_data.league_points as i16 - cached as i16;
+        let mut diff = current_league.league_points as i16 - cached.points as i16;
 
         if (diff < 0 && won) || (diff > 0 && !won) {
             diff += if won { 100 } else { -100 };
@@ -108,8 +109,9 @@ impl MatchDtoWithLeagueInfo {
 mod tests {
     use super::*;
     use match_v5::dummy_match;
+    use tentrackule_types::LeaguePoints;
 
-    fn dummy_league_entry(lp: LeaguePoints) -> LeagueEntryDto {
+    fn dummy_league_api_entry(lp: LeaguePoints) -> LeagueEntryDto {
         LeagueEntryDto {
             queue_type: "RANKED_SOLO_5x5".to_string(),
             tier: "GOLD".to_string(),
@@ -119,12 +121,22 @@ mod tests {
             losses: 12,
         }
     }
+
+    fn dummy_league_entry(lp: LeaguePoints) -> League {
+        League {
+            points: lp,
+            wins: 13,
+            losses: 12,
+        }
+    }
     #[test]
     fn league_difference_is_calculated() {
         let match_data = dummy_match();
-        let league_data = Some(dummy_league_entry(100));
+        let current_league = Some(dummy_league_api_entry(100));
+        let cached_league = Some(dummy_league_entry(90));
 
-        let match_with_info = MatchDtoWithLeagueInfo::new(match_data, league_data, Some(90));
+        let match_with_info =
+            MatchDtoWithLeagueInfo::new(match_data, current_league, cached_league);
 
         assert_eq!(
             match_with_info.calculate_league_points_difference(true),
@@ -135,9 +147,11 @@ mod tests {
     #[test]
     fn win_with_rank_up_adjusts_difference() {
         let match_data = dummy_match();
-        let league_data = Some(dummy_league_entry(20));
+        let current_league = Some(dummy_league_api_entry(20));
+        let cached_league = Some(dummy_league_entry(90));
 
-        let match_with_info = MatchDtoWithLeagueInfo::new(match_data, league_data, Some(90));
+        let match_with_info =
+            MatchDtoWithLeagueInfo::new(match_data, current_league, cached_league);
 
         assert_eq!(
             match_with_info.calculate_league_points_difference(true),
@@ -148,9 +162,11 @@ mod tests {
     #[test]
     fn loss_with_rank_down_adjusts_difference() {
         let match_data = dummy_match();
-        let league_data = Some(dummy_league_entry(80));
+        let current_league = Some(dummy_league_api_entry(80));
+        let cached_league = Some(dummy_league_entry(20));
 
-        let match_with_info = MatchDtoWithLeagueInfo::new(match_data, league_data, Some(20));
+        let match_with_info =
+            MatchDtoWithLeagueInfo::new(match_data, current_league, cached_league);
 
         assert_eq!(
             match_with_info.calculate_league_points_difference(false),
@@ -161,15 +177,16 @@ mod tests {
     #[test]
     fn returns_none_when_data_missing() {
         let match_data = dummy_match();
+        let cached_league = Some(dummy_league_entry(20));
 
-        let with_no_league = MatchDtoWithLeagueInfo::new(match_data.clone(), None, Some(90));
+        let with_no_league = MatchDtoWithLeagueInfo::new(match_data.clone(), None, cached_league);
         assert_eq!(
             with_no_league.calculate_league_points_difference(true),
             None
         );
 
         let with_no_cached =
-            MatchDtoWithLeagueInfo::new(match_data, Some(dummy_league_entry(100)), None);
+            MatchDtoWithLeagueInfo::new(match_data, Some(dummy_league_api_entry(100)), None);
         assert_eq!(
             with_no_cached.calculate_league_points_difference(true),
             None

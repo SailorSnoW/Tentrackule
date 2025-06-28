@@ -11,6 +11,7 @@ async-trait = "0.1.88"
 
 tentrackule-db = { path = "../db" }
 tentrackule-riot-api = { path = "../riot-api" }
+tentrackule-types = { path = "../types" }
 tentrackule-alert = { path = "../alert" }
 
 [dev-dependencies]

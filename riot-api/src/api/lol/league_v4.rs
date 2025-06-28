@@ -1,9 +1,10 @@
 use async_trait::async_trait;
 use serde::Deserialize;
+use tentrackule_types::{League, LeaguePoints, Region};
 
 use crate::{
     api::client::ApiRequest,
-    types::{LeaguePoints, Region, RiotApiError, RiotApiResponse},
+    types::{RiotApiError, RiotApiResponse},
 };
 
 #[async_trait]
@@ -45,5 +46,15 @@ impl LeagueEntryDto {
 
     pub fn is_ranked_flex(&self) -> bool {
         self.queue_type.eq("RANKED_FLEX_SR")
+    }
+}
+
+impl From<LeagueEntryDto> for League {
+    fn from(value: LeagueEntryDto) -> Self {
+        Self {
+            points: value.league_points,
+            wins: value.wins,
+            losses: value.losses,
+        }
     }
 }

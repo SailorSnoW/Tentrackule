@@ -13,6 +13,7 @@ dependencies = [
  "tentrackule-bot",
  "tentrackule-db",
  "tentrackule-riot-api",
+ "tentrackule-types",
  "tokio",
  "tracing",
  "tracing-appender",
@@ -2209,6 +2210,7 @@ dependencies = [
  "poise",
  "serde_json",
  "tentrackule-riot-api",
+ "tentrackule-types",
  "thiserror 2.0.12",
 ]
 
@@ -2224,6 +2226,7 @@ dependencies = [
  "tentrackule-alert",
  "tentrackule-db",
  "tentrackule-riot-api",
+ "tentrackule-types",
  "tokio",
  "tracing",
 ]
@@ -2236,6 +2239,7 @@ dependencies = [
  "poise",
  "rusqlite",
  "tentrackule-riot-api",
+ "tentrackule-types",
  "tokio",
  "tracing",
 ]
@@ -2246,6 +2250,27 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
+ "dotenv",
+ "futures",
+ "governor",
+ "log",
+ "nonzero_ext",
+ "poise",
+ "reqwest 0.12.20",
+ "serde",
+ "serde_json",
+ "tentrackule-types",
+ "thiserror 2.0.12",
+ "tokio",
+ "tracing",
+ "urlencoding",
+]
+
+[[package]]
+name = "tentrackule-types"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
  "dotenv",
  "futures",
  "governor",

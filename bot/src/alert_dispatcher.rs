@@ -90,7 +90,7 @@ mod tests {
     use tentrackule_alert::{Alert, AlertCreationError};
     use tentrackule_db::Database;
     use tentrackule_riot_api::api::client::AccountDto;
-    use tentrackule_riot_api::types::Region;
+    use tentrackule_types::Region;
     use tokio::sync::Mutex as TokioMutex;
 
     struct DummyAlert;
