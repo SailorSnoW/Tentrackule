@@ -3,12 +3,11 @@ use std::{env, sync::LazyLock};
 use async_trait::async_trait;
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
-use tentrackule_types::{QueueType, Region};
 use tracing::info;
 use urlencoding::encode;
 
 use crate::{
-    api::client::ApiRequest,
+    api::{client::ApiRequest, traits::RegionEndpoint},
     types::{RiotApiError, RiotApiResponse},
 };
 
@@ -17,7 +16,7 @@ pub trait MatchApi: ApiRequest {
     async fn get_last_match_id(
         &self,
         puuid: String,
-        region: Region,
+        region: impl RegionEndpoint,
     ) -> RiotApiResponse<Option<String>> {
         tracing::trace!("[MatchV5 API] get_last_match_id {} in {:?}", puuid, region);
 
@@ -35,7 +34,11 @@ pub trait MatchApi: ApiRequest {
         Ok(seq.first().cloned())
     }
 
-    async fn get_match(&self, match_id: String, region: Region) -> RiotApiResponse<MatchDto> {
+    async fn get_match(
+        &self,
+        match_id: String,
+        region: impl RegionEndpoint,
+    ) -> RiotApiResponse<MatchDto> {
         tracing::trace!("[MatchV5 API] get_match {} in {:?}", match_id, region);
 
         let path = format!(
@@ -70,8 +73,8 @@ pub struct MatchDto {
 }
 
 impl MatchDto {
-    pub fn queue_type(&self) -> QueueType {
-        self.info.queue_id.into()
+    pub fn queue_type<T: From<u16>>(&self) -> T {
+        T::from(self.info.queue_id)
     }
 
     pub fn participant_info_of(&self, puuid: &str) -> Option<&ParticipantDto> {
@@ -182,6 +185,35 @@ mod tests {
     use super::*;
     use crate::api::{lol::match_v5::ParticipantDto, LolApiClient};
 
+    #[derive(Debug)]
+    pub struct MockRegion;
+
+    impl RegionEndpoint for MockRegion {
+        fn to_global_endpoint(&self) -> String {
+            "europe.api.riotgames.com".to_string()
+        }
+
+        fn to_endpoint(&self) -> String {
+            unimplemented!()
+        }
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum MockQueueType {
+        TestMode,
+        Aram,
+    }
+
+    impl From<u16> for MockQueueType {
+        fn from(value: u16) -> Self {
+            match value {
+                420 => Self::TestMode,
+                450 => Self::Aram,
+                _ => panic!(),
+            }
+        }
+    }
+
     fn dummy_participant(puuid: &str) -> ParticipantDto {
         ParticipantDto {
             puuid: puuid.into(),
@@ -220,7 +252,7 @@ mod tests {
             },
         };
 
-        assert!(matches!(match_data.queue_type(), QueueType::SoloDuo));
+        assert!(matches!(match_data.queue_type(), MockQueueType::TestMode));
         assert!(match_data.participant_info_of("abc").is_some());
         assert!(match_data.participant_info_of("missing").is_none());
         assert_eq!(match_data.to_formatted_match_duration(), "02:05");
@@ -264,9 +296,12 @@ mod tests {
         let client = LolApiClient::new(key);
 
         let test_match = "EUW1_7442220067".to_string();
-        let match_data = client.get_match(test_match, Region::Euw).await.unwrap();
+        let match_data = client.get_match(test_match, MockRegion).await.unwrap();
 
         assert_eq!(match_data.info.queue_id, 450);
-        assert_eq!(match_data.queue_type(), QueueType::Aram)
+        assert_eq!(
+            match_data.queue_type::<MockQueueType>(),
+            MockQueueType::Aram
+        )
     }
 }

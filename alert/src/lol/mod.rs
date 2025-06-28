@@ -1,12 +1,15 @@
 //! Helpers to build Discord embeds for League of Legends matches.
 
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
-use tentrackule_riot_api::api::types::{MatchDtoWithLeagueInfo, ParticipantDto};
+use tentrackule_riot_api::api::{
+    traits::LeagueExt,
+    types::{MatchDtoWithLeagueInfo, ParticipantDto},
+};
 use tentrackule_types::QueueType;
 
 use crate::{Alert, AlertCreationError, TryIntoAlert};
 
-impl TryIntoAlert for MatchDtoWithLeagueInfo {
+impl<T: LeagueExt> TryIntoAlert for MatchDtoWithLeagueInfo<T> {
     fn try_into_alert(&self, puuid_focus: &str) -> Result<Alert, AlertCreationError> {
         let focused_participant = self
             .match_data
@@ -28,9 +31,9 @@ impl TryIntoAlert for MatchDtoWithLeagueInfo {
 }
 
 /// Shared alert base.
-fn base(
+fn base<T: LeagueExt>(
     focused_participant: &ParticipantDto,
-    match_data: &MatchDtoWithLeagueInfo,
+    match_data: &MatchDtoWithLeagueInfo<T>,
     with_role_field: bool,
 ) -> CreateEmbed {
     let footer = CreateEmbedFooter::new(format!(
@@ -64,27 +67,27 @@ fn base(
     embed.fields(fields)
 }
 
-fn solo_duo_ranked_alert(
+fn solo_duo_ranked_alert<T: LeagueExt>(
     focused_participant: &ParticipantDto,
-    match_data: &MatchDtoWithLeagueInfo,
+    match_data: &MatchDtoWithLeagueInfo<T>,
 ) -> CreateEmbed {
     let author = CreateEmbedAuthor::new("[LoL] Solo/Duo Queue")
         .icon_url(focused_participant.to_profile_icon_picture_url());
     ranked_alert(focused_participant, match_data).author(author)
 }
 
-fn flex_ranked_alert(
+fn flex_ranked_alert<T: LeagueExt>(
     focused_participant: &ParticipantDto,
-    match_data: &MatchDtoWithLeagueInfo,
+    match_data: &MatchDtoWithLeagueInfo<T>,
 ) -> CreateEmbed {
     let author = CreateEmbedAuthor::new("[LoL] Flex Queue")
         .icon_url(focused_participant.to_profile_icon_picture_url());
     ranked_alert(focused_participant, match_data).author(author)
 }
 
-fn ranked_alert(
+fn ranked_alert<T: LeagueExt>(
     focused_participant: &ParticipantDto,
-    match_data: &MatchDtoWithLeagueInfo,
+    match_data: &MatchDtoWithLeagueInfo<T>,
 ) -> CreateEmbed {
     let mut embed = base(focused_participant, match_data, true).description(format!(
         "**{}** just {} a ranked game !",
@@ -109,9 +112,9 @@ fn ranked_alert(
     embed
 }
 
-fn draft_normal_alert(
+fn draft_normal_alert<T: LeagueExt>(
     focused_participant: &ParticipantDto,
-    match_data: &MatchDtoWithLeagueInfo,
+    match_data: &MatchDtoWithLeagueInfo<T>,
 ) -> CreateEmbed {
     let author = CreateEmbedAuthor::new("[LoL] Normal Draft")
         .icon_url(focused_participant.to_profile_icon_picture_url());
@@ -124,9 +127,9 @@ fn draft_normal_alert(
         ))
 }
 
-fn aram_alert(
+fn aram_alert<T: LeagueExt>(
     focused_participant: &ParticipantDto,
-    match_data: &MatchDtoWithLeagueInfo,
+    match_data: &MatchDtoWithLeagueInfo<T>,
 ) -> CreateEmbed {
     let author = CreateEmbedAuthor::new("[LoL] ARAM")
         .icon_url(focused_participant.to_profile_icon_picture_url());
@@ -147,7 +150,16 @@ mod tests {
     use tentrackule_riot_api::api::types::{
         LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo, ParticipantDto,
     };
-    use tentrackule_types::League;
+
+    pub struct MockLeague {
+        league_points: u16,
+    }
+
+    impl LeagueExt for MockLeague {
+        fn league_points(&self) -> u16 {
+            self.league_points
+        }
+    }
 
     fn dummy_participant(puuid: &str) -> ParticipantDto {
         ParticipantDto {
@@ -198,15 +210,11 @@ mod tests {
         }
     }
 
-    fn cached_league_entry(lp: u16) -> League {
-        League {
-            points: lp,
-            wins: 13,
-            losses: 12,
-        }
+    fn cached_league_entry(lp: u16) -> MockLeague {
+        MockLeague { league_points: lp }
     }
 
-    fn setup_match(queue: u16, with_league: bool) -> MatchDtoWithLeagueInfo {
+    fn setup_match(queue: u16, with_league: bool) -> MatchDtoWithLeagueInfo<MockLeague> {
         let participant = dummy_participant("abc");
         let match_data = dummy_match(queue, &participant);
         let league = with_league.then(|| league_entry(120));

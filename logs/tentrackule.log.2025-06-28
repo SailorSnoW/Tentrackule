@@ -1,0 +1,17 @@
+[32m INFO[0m logger initialized
+[32m INFO[0m Using Riot Ddragon assets v15.12.1
+[32m INFO[0m 🚀 Tentrackule starting
+[32m INFO[0m opening SQLite connection
+[32m INFO[0m initializing schema
+[32m INFO[0m ensuring 'league_points' table exists
+[32m INFO[0m ensuring 'leagues' table exists
+[32m INFO[0m database ready
+[32m INFO[0m initializing bot
+[32m INFO[0m connecting to gateway
+[32m INFO[0m poller started
+[32m INFO[0m [1mstart[0m[2m:[0m[1mstart_connection[0m[1m{[0m[3mstart_shard[0m[2m=[0m0 [3mend_shard[0m[2m=[0m0 [3mtotal_shards[0m[2m=[0m1[1m}[0m[2m:[0m[1minitialize[0m[2m:[0m[1mboot[0m[1m{[0m[3mshard_info[0m[2m=[0m[ShardId(0), ShardId(1)][1m}[0m[2m:[0m Telling shard queuer to start shard 0
+[32m INFO[0m 🔄 starting fetch cycle
+[32m INFO[0m 0 requests executed (avg 0.00 req/min)
+[32m INFO[0m [1mrun[0m[2m:[0m [ShardRunner ShardInfo { id: ShardId(0), total: 1 }] Running
+[32m INFO[0m connected as TentrackuleDev
+[32m INFO[0m joined 1 guild(s)

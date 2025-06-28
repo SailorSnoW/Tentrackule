@@ -1,9 +1,8 @@
 use async_trait::async_trait;
 use serde::Deserialize;
-use tentrackule_types::{League, LeaguePoints, Region};
 
 use crate::{
-    api::client::ApiRequest,
+    api::{client::ApiRequest, traits::RegionEndpoint},
     types::{RiotApiError, RiotApiResponse},
 };
 
@@ -12,7 +11,7 @@ pub trait LeagueApi: ApiRequest {
     async fn get_leagues(
         &self,
         puuid: String,
-        region: Region,
+        region: impl RegionEndpoint,
     ) -> RiotApiResponse<Vec<LeagueEntryDto>> {
         tracing::trace!("[LeagueV4 API] get_league {} in {:?}", puuid, region);
 
@@ -34,7 +33,7 @@ pub struct LeagueEntryDto {
     pub queue_type: String,
     pub tier: String,
     pub rank: String,
-    pub league_points: LeaguePoints,
+    pub league_points: u16,
     pub wins: u16,
     pub losses: u16,
 }
@@ -46,15 +45,5 @@ impl LeagueEntryDto {
 
     pub fn is_ranked_flex(&self) -> bool {
         self.queue_type.eq("RANKED_FLEX_SR")
-    }
-}
-
-impl From<LeagueEntryDto> for League {
-    fn from(value: LeagueEntryDto) -> Self {
-        Self {
-            points: value.league_points,
-            wins: value.wins,
-            losses: value.losses,
-        }
     }
 }

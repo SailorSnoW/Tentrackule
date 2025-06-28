@@ -1,3 +1,8 @@
+use tentrackule_riot_api::api::{
+    traits::{LeagueExt, RegionEndpoint},
+    types::LeagueEntryDto,
+};
+
 pub type LeaguePoints = u16;
 
 #[derive(Debug, Clone, PartialEq, Eq, poise::ChoiceParameter)]
@@ -16,8 +21,8 @@ pub enum Region {
     Tw,
 }
 
-impl Region {
-    pub fn to_global_endpoint(&self) -> String {
+impl RegionEndpoint for Region {
+    fn to_global_endpoint(&self) -> String {
         match self {
             Region::Lan => "americas.api.riotgames.com".to_string(),
             Region::Las => "americas.api.riotgames.com".to_string(),
@@ -34,7 +39,7 @@ impl Region {
         }
     }
 
-    pub fn to_endpoint(&self) -> String {
+    fn to_endpoint(&self) -> String {
         match self {
             Region::Lan => "la1.api.riotgames.com".to_string(),
             Region::Las => "la2.api.riotgames.com".to_string(),
@@ -146,6 +151,22 @@ pub struct League {
     pub points: LeaguePoints,
     pub wins: u16,
     pub losses: u16,
+}
+
+impl LeagueExt for League {
+    fn league_points(&self) -> u16 {
+        self.points
+    }
+}
+
+impl From<LeagueEntryDto> for League {
+    fn from(value: LeagueEntryDto) -> Self {
+        Self {
+            points: value.league_points,
+            wins: value.wins,
+            losses: value.losses,
+        }
+    }
 }
 
 #[cfg(test)]

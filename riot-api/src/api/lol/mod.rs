@@ -4,10 +4,10 @@ use std::fmt::Debug;
 use tracing::warn;
 
 use crate::types::RiotApiResponse;
-use tentrackule_types::League;
 
 use super::{
     client::{AccountApi, ApiClientBase, ApiRequest},
+    traits::LeagueExt,
     types::AccountDto,
 };
 
@@ -63,17 +63,17 @@ impl AccountApi for LolApiClient {
 
 /// Match data enriched with league information and cached LPs.
 #[derive(Debug, Clone)]
-pub struct MatchDtoWithLeagueInfo {
+pub struct MatchDtoWithLeagueInfo<T> {
     pub match_data: MatchDto,
     pub current_league: Option<LeagueEntryDto>,
-    pub cached_league: Option<League>,
+    pub cached_league: Option<T>,
 }
 
-impl MatchDtoWithLeagueInfo {
+impl<T: LeagueExt> MatchDtoWithLeagueInfo<T> {
     pub fn new(
         match_data: MatchDto,
         current_league: Option<LeagueEntryDto>,
-        cached_league: Option<League>,
+        cached_league: Option<T>,
     ) -> Self {
         Self {
             match_data,
@@ -95,7 +95,7 @@ impl MatchDtoWithLeagueInfo {
             return None;
         };
 
-        let mut diff = current_league.league_points as i16 - cached.points as i16;
+        let mut diff = current_league.league_points as i16 - cached.league_points() as i16;
 
         if (diff < 0 && won) || (diff > 0 && !won) {
             diff += if won { 100 } else { -100 };
@@ -109,9 +109,18 @@ impl MatchDtoWithLeagueInfo {
 mod tests {
     use super::*;
     use match_v5::dummy_match;
-    use tentrackule_types::LeaguePoints;
 
-    fn dummy_league_api_entry(lp: LeaguePoints) -> LeagueEntryDto {
+    struct MockLeagueExt {
+        pub league_points: u16,
+    }
+
+    impl LeagueExt for MockLeagueExt {
+        fn league_points(&self) -> u16 {
+            self.league_points
+        }
+    }
+
+    fn dummy_league_api_entry(lp: u16) -> LeagueEntryDto {
         LeagueEntryDto {
             queue_type: "RANKED_SOLO_5x5".to_string(),
             tier: "GOLD".to_string(),
@@ -122,13 +131,10 @@ mod tests {
         }
     }
 
-    fn dummy_league_entry(lp: LeaguePoints) -> League {
-        League {
-            points: lp,
-            wins: 13,
-            losses: 12,
-        }
+    fn dummy_league_entry(lp: u16) -> MockLeagueExt {
+        MockLeagueExt { league_points: lp }
     }
+
     #[test]
     fn league_difference_is_calculated() {
         let match_data = dummy_match();
@@ -185,8 +191,11 @@ mod tests {
             None
         );
 
-        let with_no_cached =
-            MatchDtoWithLeagueInfo::new(match_data, Some(dummy_league_api_entry(100)), None);
+        let with_no_cached = MatchDtoWithLeagueInfo::new(
+            match_data,
+            Some(dummy_league_api_entry(100)),
+            None as Option<MockLeagueExt>,
+        );
         assert_eq!(
             with_no_cached.calculate_league_points_difference(true),
             None

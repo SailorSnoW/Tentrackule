@@ -1,10 +1,19 @@
 use poise::serenity_prelude::{ChannelId, CreateMessage, Http};
 use serde_json::json;
 use tentrackule_alert::TryIntoAlert;
-use tentrackule_riot_api::api::types::{
-    LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo, ParticipantDto,
+use tentrackule_riot_api::api::{
+    traits::LeagueExt,
+    types::{LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo, ParticipantDto},
 };
-use tentrackule_types::League;
+
+pub struct MockLeague {
+    league_points: u16,
+}
+impl LeagueExt for MockLeague {
+    fn league_points(&self) -> u16 {
+        self.league_points
+    }
+}
 
 fn dummy_participant(puuid: &str) -> ParticipantDto {
     ParticipantDto {
@@ -55,15 +64,11 @@ fn league_entry(lp: u16) -> LeagueEntryDto {
     }
 }
 
-fn cached_league_entry(lp: u16) -> League {
-    League {
-        points: lp,
-        wins: 13,
-        losses: 12,
-    }
+fn cached_league_entry(lp: u16) -> MockLeague {
+    MockLeague { league_points: lp }
 }
 
-fn setup_match(queue: u16, with_league: bool) -> MatchDtoWithLeagueInfo {
+fn setup_match(queue: u16, with_league: bool) -> MatchDtoWithLeagueInfo<MockLeague> {
     let participant = dummy_participant("abc");
     let match_data = dummy_match(queue, &participant);
     let current_league = with_league.then(|| league_entry(120));

@@ -199,7 +199,7 @@ where
                 self.alert_dispatcher
                     .dispatch_alert(
                         &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, None, None),
+                        MatchDtoWithLeagueInfo::<League>::new(match_data, None, None),
                     )
                     .await;
             }
