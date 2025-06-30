@@ -163,7 +163,7 @@ where
                 );
                 self.set_cached_league_for(
                     account.puuid.clone(),
-                    QueueType::SoloDuo,
+                    QueueType::Flex,
                     match_ranked.current_league.clone().into(),
                 )
                 .await;
