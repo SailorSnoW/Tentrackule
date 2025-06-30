@@ -67,12 +67,11 @@ impl Match {
         let cached_league = cache
             .get_league_for(ranking_of.puuid.clone(), queue_type)
             .await
-            .map_err(|_| RiotMatchError::CantRetrieveCachedLeague)?
+            .map_err(|e| RiotMatchError::CantRetrieveCachedLeague(e))?
             .ok_or(RiotMatchError::NoCachedLeagueFound(
                 ranking_of.puuid.clone(),
                 self.queue_id,
-            ))?; // TODO: pass the
-                 // error details
+            ))?;
 
         let current_leagues = api
             .get_leagues(ranking_of.puuid.clone(), Box::new(ranking_of.region))
@@ -81,7 +80,10 @@ impl Match {
         let current_league = current_leagues
             .into_iter()
             .find(|league| league.queue_type.eq(queue_type.as_str()))
-            .unwrap();
+            .ok_or(RiotMatchError::NoApiLeagueFound(
+                queue_type.as_str().to_string(),
+                ranking_of.puuid.clone(),
+            ))?;
 
         Ok(MatchRanked {
             base: self,
