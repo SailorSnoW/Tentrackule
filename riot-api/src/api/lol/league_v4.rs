@@ -11,7 +11,7 @@ pub trait LeagueApi: ApiRequest {
     async fn get_leagues(
         &self,
         puuid: String,
-        region: impl RegionEndpoint,
+        region: Box<dyn RegionEndpoint>,
     ) -> RiotApiResponse<Vec<LeagueEntryDto>> {
         tracing::trace!("[LeagueV4 API] get_league {} in {:?}", puuid, region);
 

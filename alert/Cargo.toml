@@ -7,7 +7,6 @@ edition = "2021"
 poise = "0.6.1"
 thiserror = "2"
 
-tentrackule-riot-api = { path = "../riot-api" }
 tentrackule-types = { path = "../types" }
 
 [dev-dependencies]

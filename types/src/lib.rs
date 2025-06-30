@@ -1,11 +1,30 @@
+use std::{env, sync::LazyLock};
+
 use tentrackule_riot_api::api::{
     traits::{LeagueExt, RegionEndpoint},
     types::LeagueEntryDto,
 };
+use tracing::info;
+
+pub mod lol_match;
+pub mod traits;
 
 pub type LeaguePoints = u16;
 
-#[derive(Debug, Clone, PartialEq, Eq, poise::ChoiceParameter)]
+/// Loaded once at startup to avoid repeated environment lookups.
+pub static DDRAGON_VERSION: LazyLock<String> =
+    LazyLock::new(|| env::var("DDRAGON_VERSION").unwrap_or_else(|_| "15.12.1".to_string()));
+
+pub fn init_ddragon_version() {
+    LazyLock::force(&DDRAGON_VERSION);
+    info!("Using Riot Ddragon assets v{}", DDRAGON_VERSION.as_str())
+}
+
+fn ddragon_version() -> &'static str {
+    DDRAGON_VERSION.as_str()
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, poise::ChoiceParameter)]
 pub enum Region {
     Na,
     Euw,
@@ -98,7 +117,7 @@ impl TryFrom<String> for Region {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum QueueType {
     /// Ranked Solo/Duo
     SoloDuo,
@@ -145,21 +164,21 @@ pub struct Account {
     pub last_match_id: String,
 }
 
-/// Representation of a league tracked by the bot stored in the database.
+/// Representation of a league cached by the bot which is stored in the database.
 #[derive(Debug, Clone)]
-pub struct League {
+pub struct CachedLeague {
     pub points: LeaguePoints,
     pub wins: u16,
     pub losses: u16,
 }
 
-impl LeagueExt for League {
+impl LeagueExt for CachedLeague {
     fn league_points(&self) -> u16 {
         self.points
     }
 }
 
-impl From<LeagueEntryDto> for League {
+impl From<LeagueEntryDto> for CachedLeague {
     fn from(value: LeagueEntryDto) -> Self {
         Self {
             points: value.league_points,

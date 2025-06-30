@@ -2209,7 +2209,6 @@ version = "0.1.0"
 dependencies = [
  "poise",
  "serde_json",
- "tentrackule-riot-api",
  "tentrackule-types",
  "thiserror 2.0.12",
 ]

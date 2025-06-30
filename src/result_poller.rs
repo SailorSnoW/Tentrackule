@@ -7,33 +7,30 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tentrackule_bot::AlertDispatch;
-use tentrackule_db::{DatabaseExt, SharedDatabase};
-use tentrackule_riot_api::api::{
-    types::{LeagueEntryDto, MatchDto, MatchDtoWithLeagueInfo},
-    LolApiFull,
+use tentrackule_riot_api::api::{types::MatchDto, LolApiFull};
+use tentrackule_types::{
+    lol_match::Match,
+    traits::{CachedAccountSource, CachedLeagueSource},
+    Account, CachedLeague, QueueType, Region,
 };
-use tentrackule_types::{Account, League, QueueType, Region};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info};
 
 /// Poller responsible for automatically fetching new results of tracked player from Riot servers, parsing results data and sending it to the discord receiver when alerting is needed.
-pub struct ResultPoller<LA, AD>
-where
-    LA: LolApiFull,
-    AD: AlertDispatch,
-{
+pub struct ResultPoller<C, LA, AD> {
     lol_api: Arc<LA>,
-    db: SharedDatabase,
+    db: C,
     alert_dispatcher: AD,
     start_time: u128,
     poll_interval: Duration,
 }
 
-impl<LA, AD> ResultPoller<LA, AD>
+impl<C, LA, AD> ResultPoller<C, LA, AD>
 where
+    C: CachedAccountSource + CachedLeagueSource + Sync + Send + 'static,
     LA: LolApiFull + Send + Sync + 'static,
     AD: AlertDispatch + Sync + Send + 'static,
 {
-    pub fn new(lol_api: Arc<LA>, db: SharedDatabase, alert_dispatcher: AD) -> Self {
+    pub fn new(lol_api: Arc<LA>, db: C, alert_dispatcher: AD) -> Self {
         let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
             .ok()
             .and_then(|s| s.parse::<u64>().ok())
@@ -81,7 +78,7 @@ where
     }
 
     async fn get_all_accounts(&self) -> Vec<Account> {
-        match self.db.run(|db| db.get_all_accounts()).await {
+        match self.db.get_all_accounts().await {
             Ok(accounts) => accounts,
             Err(e) => {
                 error!("Database error while fetching accounts: {}", e);
@@ -93,7 +90,7 @@ where
     async fn process_account(&self, account: Account) {
         debug!("checking {}#{}", account.game_name, account.tag_line);
         let Some(new_match_id) = self
-            .fetch_new_match_id(account.puuid.clone(), account.region.clone())
+            .fetch_new_match_id(account.puuid.clone(), account.region)
             .await
         else {
             return;
@@ -111,10 +108,7 @@ where
         self.store_new_match_id(account.puuid.clone(), new_match_id.clone())
             .await;
 
-        let Some(match_data) = self
-            .fetch_match_data(new_match_id, account.region.clone())
-            .await
-        else {
+        let Some(match_data) = self.fetch_match_data(new_match_id, account.region).await else {
             return;
         };
 
@@ -126,69 +120,60 @@ where
             return;
         }
 
-        self.dispatch_alert_if_needed(account, match_data).await;
+        self.dispatch_alert_if_needed(account, match_data.into())
+            .await;
     }
 
-    async fn dispatch_alert_if_needed(&self, account: Account, match_data: MatchDto) {
+    async fn dispatch_alert_if_needed(&self, account: Account, match_data: Match) {
         match match_data.queue_type() {
             QueueType::SoloDuo => {
-                let cached_league = self
-                    .get_cached_league(account.puuid.clone(), QueueType::SoloDuo)
-                    .await;
-                let league = self
-                    .get_ranked_solo_duo_league(account.puuid.clone(), account.region)
-                    .await;
+                let match_ranked = match_data
+                    .try_into_match_ranked(&account, self.lol_api.clone(), &self.db)
+                    .await
+                    .unwrap();
 
-                if let Some(x) = league.clone() {
-                    debug!(
-                        "updating league to {} for {}#{}",
-                        x.league_points, account.game_name, account.tag_line
-                    );
-                    self.update_league(account.puuid.clone(), QueueType::SoloDuo, x)
-                        .await;
-                } else {
-                    warn!("league data missing");
-                }
+                debug!(
+                    "updating league to {} for {}#{}",
+                    match_ranked.current_league.league_points, account.game_name, account.tag_line
+                );
+                self.set_cached_league_for(
+                    account.puuid.clone(),
+                    QueueType::SoloDuo,
+                    match_ranked.current_league.clone().into(),
+                )
+                .await;
 
                 debug!(
                     "dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
-                    .dispatch_alert(
-                        &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league),
-                    )
+                    .dispatch_alert(&account.puuid, match_ranked)
                     .await;
             }
             QueueType::Flex => {
-                let cached_league = self
-                    .get_cached_league(account.puuid.clone(), QueueType::Flex)
-                    .await;
-                let league = self
-                    .get_ranked_flex_league(account.puuid.clone(), account.region)
-                    .await;
+                let match_ranked = match_data
+                    .try_into_match_ranked(&account, self.lol_api.clone(), &self.db)
+                    .await
+                    .unwrap();
 
-                if let Some(x) = league.clone() {
-                    debug!(
-                        "updating league to {:?} for {}#{}",
-                        x, account.game_name, account.tag_line
-                    );
-                    self.update_league(account.puuid.clone(), QueueType::Flex, x)
-                        .await;
-                } else {
-                    warn!("league data missing");
-                }
+                debug!(
+                    "updating league to {} for {}#{}",
+                    match_ranked.current_league.league_points, account.game_name, account.tag_line
+                );
+                self.set_cached_league_for(
+                    account.puuid.clone(),
+                    QueueType::SoloDuo,
+                    match_ranked.current_league.clone().into(),
+                )
+                .await;
 
                 debug!(
                     "dispatching alert for {}#{}",
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
-                    .dispatch_alert(
-                        &account.puuid,
-                        MatchDtoWithLeagueInfo::new(match_data, league, cached_league),
-                    )
+                    .dispatch_alert(&account.puuid, match_ranked)
                     .await;
             }
             QueueType::NormalDraft | QueueType::Aram => {
@@ -197,16 +182,13 @@ where
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
-                    .dispatch_alert(
-                        &account.puuid,
-                        MatchDtoWithLeagueInfo::<League>::new(match_data, None, None),
-                    )
+                    .dispatch_alert(&account.puuid, match_data)
                     .await;
             }
             QueueType::Unhandled => {
                 debug!(
                     "{}#{} unsupported queue ID: {}",
-                    account.game_name, account.tag_line, match_data.info.queue_id
+                    account.game_name, account.tag_line, match_data.queue_id
                 );
             }
         }
@@ -224,21 +206,18 @@ where
     }
 
     async fn store_new_match_id(&self, puuid: String, match_id: String) {
-        if let Err(e) = self
-            .db
-            .run(|db| db.set_last_match_id(puuid, match_id))
-            .await
-        {
+        if let Err(e) = self.db.set_last_match_id(puuid, match_id).await {
             error!("Failed to send DB request: {}", e);
         }
     }
 
-    async fn update_league(&self, puuid: String, queue_type: QueueType, league: LeagueEntryDto) {
-        if let Err(e) = self
-            .db
-            .run(move |db| db.update_league(puuid, queue_type, league.into()))
-            .await
-        {
+    async fn set_cached_league_for(
+        &self,
+        puuid: String,
+        queue_type: QueueType,
+        league: CachedLeague,
+    ) {
+        if let Err(e) = self.db.set_league_for(puuid, queue_type, league).await {
             error!("Failed to send DB request: {}", e);
         }
     }
@@ -252,55 +231,5 @@ where
                 None
             }
         }
-    }
-
-    async fn get_cached_league(&self, puuid: String, queue_type: QueueType) -> Option<League> {
-        match self
-            .db
-            .run(move |db| db.get_league(puuid, queue_type))
-            .await
-        {
-            Ok(res) => res,
-            Err(e) => {
-                error!("Failed to send DB request: {}", e);
-                None
-            }
-        }
-    }
-
-    async fn get_ranked_solo_duo_league(
-        &self,
-        puuid: String,
-        region: Region,
-    ) -> Option<LeagueEntryDto> {
-        let request = self.lol_api.get_leagues(puuid, region).await;
-        let leagues = match request {
-            Ok(l) => l,
-            Err(e) => {
-                error!("Riot API error while fetching last match: {:?}", e);
-                None
-            }?,
-        };
-
-        leagues
-            .into_iter()
-            .find(|league| league.is_ranked_solo_duo())
-    }
-
-    async fn get_ranked_flex_league(
-        &self,
-        puuid: String,
-        region: Region,
-    ) -> Option<LeagueEntryDto> {
-        let request = self.lol_api.get_leagues(puuid, region).await;
-        let leagues = match request {
-            Ok(l) => l,
-            Err(e) => {
-                error!("Riot API error while fetching last match: {:?}", e);
-                None
-            }?,
-        };
-
-        leagues.into_iter().find(|league| league.is_ranked_flex())
     }
 }

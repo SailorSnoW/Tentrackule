@@ -6,9 +6,12 @@
 use commands::{current_alert_channel, set_alert_channel, show_tracked, track, untrack};
 use poise::serenity_prelude as serenity;
 use serenity::*;
-use std::{env, sync::Arc};
+use std::{env, fmt::Debug, sync::Arc};
 use tentrackule_db::SharedDatabase;
 use tentrackule_riot_api::api::client::AccountApi;
+use tentrackule_types::traits::{
+    CachedAccountGuildSource, CachedAccountSource, CachedSettingSource,
+};
 use tracing::{error, info};
 
 use handler::event_handler;
@@ -19,6 +22,11 @@ mod alert_dispatcher;
 mod commands;
 mod handler;
 mod message_sender;
+
+/// Super-trait to specify the required API to handle caching tracked accounts/guilds/settings...
+pub trait Cache: CachedAccountSource + CachedAccountGuildSource + CachedSettingSource {}
+
+impl Cache for SharedDatabase {}
 
 // Types used by all command functions
 /// Error type shared by all slash commands.
@@ -32,7 +40,7 @@ pub struct DiscordBot {
 }
 
 impl DiscordBot {
-    pub async fn new(db: SharedDatabase, account_api: Arc<dyn AccountApi>) -> Self {
+    pub async fn new(db: Arc<dyn Cache>, account_api: Arc<dyn AccountApi>) -> Self {
         let token =
             env::var("DISCORD_BOT_TOKEN").expect("Expected a discord bot token in the environment");
         let intents = GatewayIntents::non_privileged();
@@ -85,6 +93,6 @@ impl DiscordBot {
 /// Custom data passed to all command functions.
 #[derive(Debug)]
 pub struct Data {
-    db: SharedDatabase,
+    db: Arc<dyn Cache>,
     account_api: Arc<dyn AccountApi>,
 }

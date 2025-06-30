@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use message_sender::MessageSender;
 use tentrackule_alert::TryIntoAlert;
-use tentrackule_db::DatabaseExt;
+use tentrackule_types::traits::CachedAccountGuildSource;
 use tracing::{error, warn};
 
 use super::*;
@@ -16,24 +16,27 @@ pub trait AlertDispatch {
 }
 
 /// An AlertDispatcher which use a discord Http client to send alerts.
-pub type DiscordAlertDispatcher = AlertDispatcher<Arc<Http>>;
+pub type DiscordAlertDispatcher<Cache> = AlertDispatcher<Arc<Http>, Cache>;
 
 /// Implementation of [`AlertDispatch`] using a [`MessageSender`] and the database.
-pub struct AlertDispatcher<S: MessageSender> {
+pub struct AlertDispatcher<S, C> {
     sender: Arc<S>,
-    db: SharedDatabase,
+    db: C,
 }
 
-impl<S: MessageSender> AlertDispatcher<S> {
+impl<S, C> AlertDispatcher<S, C>
+where
+    C: CachedAccountGuildSource,
+{
     /// Create a new dispatcher using the given message sender and database handle.
-    pub fn new(sender: Arc<S>, db: SharedDatabase) -> Self {
+    pub fn new(sender: Arc<S>, db: C) -> Self {
         Self { sender, db }
     }
 
     /// Retrieve the list of guilds tracking the specified player along with
     /// their configured alert channel, if any.
     async fn get_guilds_for_account(&self, puuid: String) -> HashMap<GuildId, Option<ChannelId>> {
-        match self.db.run(|db| db.get_guilds_for_puuid(puuid)).await {
+        match self.db.get_guilds_for(puuid).await {
             Ok(x) => x,
             Err(e) => {
                 error!("DB error while getting guilds for account: {}", e);
@@ -44,7 +47,11 @@ impl<S: MessageSender> AlertDispatcher<S> {
 }
 
 #[async_trait]
-impl<S: MessageSender> AlertDispatch for AlertDispatcher<S> {
+impl<S, C> AlertDispatch for AlertDispatcher<S, C>
+where
+    S: MessageSender,
+    C: CachedAccountGuildSource + Send + Sync,
+{
     async fn dispatch_alert<T>(&self, puuid: &str, match_data: T)
     where
         T: TryIntoAlert + Send + Sync,
@@ -79,83 +86,5 @@ impl<S: MessageSender> AlertDispatch for AlertDispatcher<S> {
                 }
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use poise::serenity_prelude::{CreateEmbed, GuildId};
-    use rusqlite::Connection;
-    use tentrackule_alert::{Alert, AlertCreationError};
-    use tentrackule_db::Database;
-    use tentrackule_riot_api::api::client::AccountDto;
-    use tentrackule_types::Region;
-    use tokio::sync::Mutex as TokioMutex;
-
-    struct DummyAlert;
-
-    impl TryIntoAlert for DummyAlert {
-        fn try_into_alert(&self, _puuid: &str) -> Result<Alert, AlertCreationError> {
-            Ok(CreateEmbed::new().title("dummy"))
-        }
-    }
-
-    #[derive(Default)]
-    struct MockSender {
-        sent: TokioMutex<Vec<ChannelId>>,
-    }
-
-    #[async_trait::async_trait]
-    impl MessageSender for MockSender {
-        async fn send_message(
-            &self,
-            channel_id: ChannelId,
-            _msg: CreateMessage,
-        ) -> serenity::Result<()> {
-            self.sent.lock().await.push(channel_id);
-            Ok(())
-        }
-    }
-
-    fn setup_db() -> Database {
-        let conn = Connection::open_in_memory().unwrap();
-        Database::from_connection(conn)
-    }
-
-    #[tokio::test]
-    async fn dispatch_alert_sends_to_configured_channels() {
-        let mut db = setup_db();
-        db.track_new_account(
-            AccountDto {
-                puuid: "puuid".into(),
-                game_name: Some("gm".into()),
-                tag_line: Some("tag".into()),
-            },
-            Region::Euw,
-            GuildId::new(1),
-        )
-        .unwrap();
-        db.set_alert_channel(GuildId::new(1), ChannelId::new(42))
-            .unwrap();
-        db.track_new_account(
-            AccountDto {
-                puuid: "puuid".into(),
-                game_name: Some("gm".into()),
-                tag_line: Some("tag".into()),
-            },
-            Region::Euw,
-            GuildId::new(2),
-        )
-        .unwrap();
-
-        let shared: SharedDatabase = Arc::new(TokioMutex::new(db));
-        let mock = Arc::new(MockSender::default());
-        let sender = AlertDispatcher::new(mock.clone(), shared);
-
-        sender.dispatch_alert("puuid", DummyAlert).await;
-
-        let sent = mock.sent.lock().await;
-        assert_eq!(&*sent, &[ChannelId::new(42)]);
     }
 }

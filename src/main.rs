@@ -8,8 +8,9 @@ use std::{env, sync::Arc};
 use dotenv::dotenv;
 use result_poller::ResultPoller;
 use tentrackule_bot::{DiscordAlertDispatcher, DiscordBot};
-use tentrackule_db::Database;
-use tentrackule_riot_api::api::{init_ddragon_version, LolApiClient};
+use tentrackule_db::SharedDatabase;
+use tentrackule_riot_api::api::LolApiClient;
+use tentrackule_types::init_ddragon_version;
 use tracing::{error, info};
 
 mod logging;
@@ -23,11 +24,11 @@ async fn main() {
 
     info!("🚀 Tentrackule starting");
 
-    let db = Database::new_shared_from_env();
+    let db = SharedDatabase::new_from_env().unwrap();
 
     let lol_api: Arc<LolApiClient> = LolApiClient::new(get_api_key_from_env()).into();
-    let bot = DiscordBot::new(db.clone(), lol_api.clone()).await;
-    let alert_dispatcher: DiscordAlertDispatcher =
+    let bot = DiscordBot::new(Arc::new(db.clone()), lol_api.clone()).await;
+    let alert_dispatcher: DiscordAlertDispatcher<SharedDatabase> =
         DiscordAlertDispatcher::new(Arc::new(bot.client.http.clone()), db.clone());
     let result_poller = ResultPoller::new(lol_api.clone(), db, alert_dispatcher);
 

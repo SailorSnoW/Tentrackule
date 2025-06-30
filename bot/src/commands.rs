@@ -1,8 +1,7 @@
 //! Slash command implementations used by the Discord bot.
 
 use poise::serenity_prelude::ChannelType;
-use tentrackule_db::DatabaseExt;
-use tentrackule_types::Region;
+use tentrackule_types::{Account, Region};
 use tracing::{debug, info};
 
 use super::{serenity, Context, Error};
@@ -42,23 +41,27 @@ pub async fn track(
 
     debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
 
-    let account_data = ctx
+    let api_account_data = ctx
         .data()
         .account_api
         .get_account_by_riot_id(game_name.clone(), tag.clone())
         .await?;
 
+    let cached_account = Account {
+        puuid: api_account_data.puuid,
+        game_name: api_account_data.game_name.unwrap(),
+        tag_line: api_account_data.tag_line.unwrap(),
+        region,
+        last_match_id: Default::default(),
+    };
+
     debug!("[CMD] storing tracking data in DB");
 
-    if let Err(e) = ctx
-        .data()
-        .db
-        .run_mut(move |db| db.track_new_account(account_data, region, guild_id))
-        .await
-    {
+    if let Err(e) = ctx.data().db.insert_account(cached_account, guild_id).await {
         tracing::error!("DB error while tracking player: {}", e);
-        ctx.say("❌ Internal Error: Something went wrong during database operations.")
-            .await?;
+        let _ = ctx
+            .say("❌ Internal Error: Something went wrong during database operations.")
+            .await;
         return Ok(());
     }
 
@@ -89,7 +92,7 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
     if let Err(e) = ctx
         .data()
         .db
-        .run(move |db| db.untrack_account(account_data.puuid, guild_id))
+        .remove_account(account_data.puuid, guild_id)
         .await
     {
         tracing::error!("DB error while untracking player: {}", e);
@@ -115,12 +118,7 @@ pub async fn show_tracked(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
 
-    let response = match ctx
-        .data()
-        .db
-        .run(move |db| db.get_guild_accounts(guild_id))
-        .await
-    {
+    let response = match ctx.data().db.get_accounts_for(guild_id).await {
         Ok(accounts) => {
             let mut s: String = "Currently Tracked:\n".to_owned();
             for account in accounts {
@@ -158,12 +156,7 @@ pub async fn set_alert_channel(
         return Ok(());
     };
 
-    if let Err(e) = ctx
-        .data()
-        .db
-        .run(move |db| db.set_alert_channel(guild_id, channel.id))
-        .await
-    {
+    if let Err(e) = ctx.data().db.set_alert_channel(guild_id, channel.id).await {
         tracing::error!("DB error while setting alert channel: {}", e);
         ctx.say("❌ Internal Error: Couldn't update alert channel.")
             .await?;
@@ -187,12 +180,7 @@ pub async fn current_alert_channel(ctx: Context<'_>) -> Result<(), Error> {
         return Ok(());
     };
 
-    let response = match ctx
-        .data()
-        .db
-        .run(move |db| db.get_alert_channel(guild_id))
-        .await
-    {
+    let response = match ctx.data().db.get_alert_channel(guild_id).await {
         Ok(Some(channel_id)) => {
             let channel = channel_id
                 .to_channel(ctx)
@@ -206,7 +194,7 @@ pub async fn current_alert_channel(ctx: Context<'_>) -> Result<(), Error> {
         }
         Err(e) => {
             tracing::error!("DB query error: {}", e);
-            "❌ Internal Error: Couldn't the alert channel for this server.".to_string()
+            "❌ Internal Error: Couldn't get the alert channel for this server.".to_string()
         }
     };
 
