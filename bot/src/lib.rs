@@ -35,11 +35,13 @@ type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 /// Wrapper around a Serenity [`Client`] with all command handlers registered.
-pub struct DiscordBot {
-    pub client: Client,
-}
+pub struct DiscordBot(Client);
 
 impl DiscordBot {
+    pub fn client(&self) -> &Client {
+        &self.0
+    }
+
     pub async fn new(db: Arc<dyn Cache>, account_api: Arc<dyn AccountApi>) -> Self {
         let token =
             env::var("DISCORD_BOT_TOKEN").expect("Expected a discord bot token in the environment");
@@ -72,7 +74,7 @@ impl DiscordBot {
             .await
             .expect("Discord client creation should success.");
 
-        Self { client }
+        DiscordBot(client)
     }
 
     pub fn start(self) -> tokio::task::JoinHandle<Result<(), serenity::Error>> {
@@ -81,7 +83,7 @@ impl DiscordBot {
 
     async fn run(mut self) -> Result<(), serenity::Error> {
         info!("connecting to gateway");
-        if let Err(why) = self.client.start().await {
+        if let Err(why) = self.0.start().await {
             error!("connection failed: {why:?}");
             return Err(why);
         }
