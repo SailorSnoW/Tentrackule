@@ -127,10 +127,16 @@ where
     async fn dispatch_alert_if_needed(&self, account: Account, match_data: Match) {
         match match_data.queue_type() {
             QueueType::SoloDuo => {
-                let match_ranked = match_data
+                let match_ranked = match match_data
                     .try_into_match_ranked(&account, self.lol_api.clone(), &self.db)
                     .await
-                    .unwrap();
+                {
+                    Ok(data) => data,
+                    Err(e) => {
+                        error!("conversion of match into a ranked match failed: {}", e);
+                        return;
+                    }
+                };
 
                 debug!(
                     "updating league to {} for {}#{}",
@@ -152,10 +158,16 @@ where
                     .await;
             }
             QueueType::Flex => {
-                let match_ranked = match_data
+                let match_ranked = match match_data
                     .try_into_match_ranked(&account, self.lol_api.clone(), &self.db)
                     .await
-                    .unwrap();
+                {
+                    Ok(data) => data,
+                    Err(e) => {
+                        error!("conversion of match into a ranked match failed: {}", e);
+                        return;
+                    }
+                };
 
                 debug!(
                     "updating league to {} for {}#{}",
