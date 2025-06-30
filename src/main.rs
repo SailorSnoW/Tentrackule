@@ -25,6 +25,7 @@ async fn main() {
     info!("🚀 Tentrackule starting");
 
     let db = SharedDatabase::new_from_env().unwrap();
+    db.init().await;
 
     let lol_api: Arc<LolApiClient> = LolApiClient::new(get_api_key_from_env()).into();
     let bot = DiscordBot::new(Arc::new(db.clone()), lol_api.clone()).await;

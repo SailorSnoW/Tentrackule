@@ -16,14 +16,17 @@ use tentrackule_types::{
     },
     Account, CachedLeague, QueueType,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, OnceCell};
 use tracing::{debug, info};
 
 mod migrations;
 
 /// Thread-safe wrapper around a SQLite database connection used across async tasks.
 #[derive(Debug, Clone)]
-pub struct SharedDatabase(Arc<Mutex<Connection>>);
+pub struct SharedDatabase {
+    conn: Arc<Mutex<Connection>>,
+    init_once: Arc<OnceCell<()>>,
+}
 
 #[async_trait]
 impl CachedSettingSource for SharedDatabase {
@@ -35,7 +38,7 @@ impl CachedSettingSource for SharedDatabase {
         let guild_id_u64: u64 = guild_id.into();
         let channel_id_u64: u64 = channel_id.into();
 
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         db.execute(
             "INSERT OR REPLACE INTO guild_settings
@@ -51,7 +54,7 @@ impl CachedSettingSource for SharedDatabase {
     ) -> Result<Option<ChannelId>, CachedSourceError> {
         let guild_id_u64: u64 = guild_id.into();
 
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         let maybe_channel_id_u64: Option<u64> = db
             .query_row(
@@ -74,7 +77,7 @@ impl CachedAccountSource for SharedDatabase {
     ) -> Result<(), CachedSourceError> {
         let guild_id_u64: u64 = guild_id.into();
 
-        let mut db = self.0.lock().await;
+        let mut db = self.conn.lock().await;
 
         let tx = db.transaction()?;
         tx.execute(
@@ -107,7 +110,7 @@ impl CachedAccountSource for SharedDatabase {
     ) -> Result<(), CachedSourceError> {
         let guild_id_u64: u64 = guild_id.into();
 
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         db.execute(
             "DELETE FROM account_guilds WHERE puuid = ?1 AND guild_id = ?2",
@@ -137,7 +140,7 @@ impl CachedAccountSource for SharedDatabase {
         puuid: String,
         match_id: String,
     ) -> Result<(), CachedSourceError> {
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         db.execute(
             "UPDATE accounts SET last_match_id = ?1 WHERE puuid = ?2",
@@ -148,7 +151,7 @@ impl CachedAccountSource for SharedDatabase {
 
     /// Get all accounts from the cache.
     async fn get_all_accounts(&self) -> Result<Vec<Account>, CachedSourceError> {
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         let mut stmt =
             db.prepare("SELECT puuid, game_name, tag_line, region, last_match_id FROM accounts")?;
@@ -177,7 +180,7 @@ impl CachedAccountGuildSource for SharedDatabase {
         &self,
         puuid: String,
     ) -> Result<HashMap<GuildId, Option<ChannelId>>, CachedSourceError> {
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
             "SELECT gs.guild_id, gs.alert_channel_id
@@ -204,7 +207,7 @@ impl CachedAccountGuildSource for SharedDatabase {
     async fn get_accounts_for(&self, guild_id: GuildId) -> Result<Vec<Account>, CachedSourceError> {
         let guild_id_str = guild_id.to_string();
 
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
             "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id
@@ -238,7 +241,7 @@ impl CachedLeagueSource for SharedDatabase {
         puuid: String,
         queue_type: QueueType,
     ) -> Result<Option<CachedLeague>, Box<dyn Error + Send + Sync>> {
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         db.query_row(
             "SELECT points, wins, losses FROM leagues WHERE puuid = ?1 AND queue_type = ?2",
@@ -261,7 +264,7 @@ impl CachedLeagueSource for SharedDatabase {
         queue_type: QueueType,
         league: CachedLeague,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let db = self.0.lock().await;
+        let db = self.conn.lock().await;
 
         db.execute(
             "INSERT OR REPLACE INTO leagues (puuid, queue_type, points, wins, losses) VALUES (?1, ?2, ?3, ?4, ?5)",
@@ -281,7 +284,10 @@ impl SharedDatabase {
     /// Create a new database from the given connection and initialize schema.
     pub fn from_connection(conn: Connection) -> Self {
         info!("opening SQLite connection");
-        SharedDatabase(Arc::new(Mutex::new(conn)))
+        Self {
+            conn: Arc::new(Mutex::new(conn)),
+            init_once: Arc::new(OnceCell::new()),
+        }
     }
 
     /// Create a new database using the `DB_PATH` environment variable.
@@ -306,48 +312,53 @@ impl SharedDatabase {
 
     /// Initialize the schemas of the database.
     pub async fn init(&self) {
-        info!("initializing schema");
+        let _ = self
+            .init_once
+            .get_or_init(|| async {
+                info!("initializing schema");
 
-        let db = self.0.lock().await;
+                let db = self.conn.lock().await;
 
-        // Create tables only if they not exists
-        db.execute(
-            "CREATE TABLE IF NOT EXISTS guild_settings (
-            guild_id INTEGER PRIMARY KEY,
-            alert_channel_id INTEGER
-        )",
-            [],
-        )
-        .unwrap();
-        db.execute(
-            "CREATE TABLE IF NOT EXISTS accounts (
-            puuid TEXT PRIMARY KEY,
-            game_name TEXT NOT NULL,
-            tag_line TEXT NOT NULL,
-            region TEXT NOT NULL,
-            last_match_id TEXT NOT NULL
-        )",
-            [],
-        )
-        .unwrap();
-        db.execute(
-            "CREATE TABLE IF NOT EXISTS account_guilds (
-            puuid TEXT,
-            guild_id INTEGER,
-            PRIMARY KEY (puuid, guild_id),
-            FOREIGN KEY (puuid) REFERENCES accounts(puuid)
-            FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id)
-        )",
-            [],
-        )
-        .unwrap();
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS guild_settings (
+                        guild_id INTEGER PRIMARY KEY,
+                        alert_channel_id INTEGER
+                    )",
+                    [],
+                )
+                .unwrap();
 
-        // Run Migrations
-        debug!("running migrations");
-        migrations::V1::do_migration(&db);
-        migrations::V2::do_migration(&db);
-        migrations::V3::do_migration(&db);
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS accounts (
+                        puuid TEXT PRIMARY KEY,
+                        game_name TEXT NOT NULL,
+                        tag_line TEXT NOT NULL,
+                        region TEXT NOT NULL,
+                        last_match_id TEXT NOT NULL
+                    )",
+                    [],
+                )
+                .unwrap();
 
-        info!("database ready");
+                db.execute(
+                    "CREATE TABLE IF NOT EXISTS account_guilds (
+                        puuid TEXT,
+                        guild_id INTEGER,
+                        PRIMARY KEY (puuid, guild_id),
+                        FOREIGN KEY (puuid) REFERENCES accounts(puuid),
+                        FOREIGN KEY (guild_id) REFERENCES guild_settings(guild_id)
+                    )",
+                    [],
+                )
+                .unwrap();
+
+                debug!("running migrations");
+                migrations::V1::do_migration(&db);
+                migrations::V2::do_migration(&db);
+                migrations::V3::do_migration(&db);
+
+                info!("database ready");
+            })
+            .await;
     }
 }
