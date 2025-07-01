@@ -2207,6 +2207,7 @@ name = "tentrackule-alert"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "dotenv",
  "poise",
  "serde_json",
  "tentrackule-shared",
