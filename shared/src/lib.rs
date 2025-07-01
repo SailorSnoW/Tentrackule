@@ -166,7 +166,7 @@ pub struct Account {
 #[serde(rename_all = "camelCase")]
 pub struct League {
     pub queue_type: String,
-    pub points: u16,
+    pub league_points: u16,
     pub wins: u16,
     pub losses: u16,
     pub rank: String,
@@ -185,7 +185,7 @@ impl League {
 
 impl LeaguePoints for League {
     fn league_points(&self) -> u16 {
-        self.points
+        self.league_points
     }
 }
 impl LeagueRank for League {

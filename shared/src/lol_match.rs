@@ -163,7 +163,7 @@ impl MatchRanked {
 
         let cached = &self.cached_league;
 
-        let mut diff = current_league.league_points() as i16 - cached.points as i16;
+        let mut diff = current_league.league_points() as i16 - cached.league_points as i16;
 
         if (diff < 0 && won) || (diff > 0 && !won) {
             diff += if won { 100 } else { -100 };

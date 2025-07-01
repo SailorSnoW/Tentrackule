@@ -131,33 +131,13 @@ mod tests {
         types::RiotApiError,
     };
 
-    use super::{AccountApi, ApiClientBase, ApiRequest};
+    use super::{ApiClientBase, ApiRequest};
     use dotenv::dotenv;
     use governor::{Quota, RateLimiter};
     use nonzero_ext::nonzero;
     use serde_json::json;
     use std::env;
     use tentrackule_shared::Account;
-
-    #[tokio::test]
-    #[ignore = "API Key required"]
-    async fn get_account_by_riot_id_works() {
-        let key = env::var("RIOT_API_KEY")
-            .expect("A Riot API Key must be set in environment to create the API Client.");
-        let client = ApiClientBase::new(key);
-
-        let account = client
-            .get_account_by_riot_id("Le Conservateur".to_string(), "3012".to_string())
-            .await
-            .unwrap();
-
-        assert_eq!(
-            account.puuid,
-            "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
-        );
-        assert_eq!(account.game_name, "Le Conservateur".to_string());
-        assert_eq!(account.tag_line, "3012".to_string())
-    }
 
     #[tokio::test]
     async fn request_propagates_reqwest_error() {

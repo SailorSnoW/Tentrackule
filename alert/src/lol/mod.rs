@@ -178,7 +178,7 @@ mod tests {
     fn league(queue: &str) -> League {
         League {
             queue_type: queue.to_string(),
-            points: 10,
+            league_points: 10,
             wins: 1,
             losses: 1,
             rank: "I".to_string(),

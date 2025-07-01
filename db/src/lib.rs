@@ -124,10 +124,6 @@ impl CachedAccountSource for SharedDatabase {
         )?;
 
         if remaining == 0 {
-            db.execute(
-                "DELETE FROM league_points WHERE puuid = ?1",
-                [puuid.clone()],
-            )?;
             db.execute("DELETE FROM leagues WHERE puuid = ?1", [puuid.clone()])?;
             db.execute("DELETE FROM accounts WHERE puuid = ?1", [puuid])?;
         }
@@ -248,7 +244,7 @@ impl CachedLeagueSource for SharedDatabase {
             params![puuid, queue_type.as_str()],
             |row| {
                 Ok(League {
-                    points: row.get(0)?,
+                    league_points: row.get(0)?,
                     rank: row.get(1)?,
                     tier: row.get(2)?,
                     wins: row.get(3)?,
@@ -270,7 +266,7 @@ impl CachedLeagueSource for SharedDatabase {
 
         db.execute(
             "INSERT OR REPLACE INTO leagues (puuid, queue_type, points, wins, losses, rank, tier) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![puuid, league.queue_type.as_str(), league.points, league.wins, league.losses, league.rank, league.tier],
+            params![puuid, league.queue_type.as_str(), league.league_points, league.wins, league.losses, league.rank, league.tier],
         )?;
         Ok(())
     }
