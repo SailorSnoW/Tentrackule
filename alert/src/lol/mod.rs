@@ -36,8 +36,8 @@ impl TryIntoAlert for MatchRanked {
         })?;
 
         match self.base.queue_type() {
-            QueueType::SoloDuo => Ok(flex_ranked_alert(focused_participant, self)),
-            QueueType::Flex => Ok(solo_duo_ranked_alert(focused_participant, self)),
+            QueueType::Flex => Ok(flex_ranked_alert(focused_participant, self)),
+            QueueType::SoloDuo => Ok(solo_duo_ranked_alert(focused_participant, self)),
             _ => Err(AlertCreationError::UnsupportedQueueType {
                 queue_id: self.base.queue_id,
             }),
