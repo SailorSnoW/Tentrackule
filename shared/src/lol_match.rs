@@ -1,38 +1,23 @@
 use std::sync::Arc;
 
 use poise::serenity_prelude::Colour;
-use tentrackule_riot_api::{
-    api::types::{LeagueApi, LeagueEntryDto, MatchDto, ParticipantDto},
-    types::RiotMatchError,
-};
 use urlencoding::encode;
 
-use crate::{ddragon_version, traits::CachedLeagueSource, Account, CachedLeague, QueueType};
-
-/// We directly use the API type as it doesn't need any change for the moment.
-pub type OnlineLeague = LeagueEntryDto;
+use crate::{
+    ddragon_version,
+    errors::RiotMatchError,
+    traits::{
+        api::{LeagueApi, LeaguePoints, LeagueQueueType},
+        CachedLeagueSource,
+    },
+    Account, League, QueueType,
+};
 
 pub struct Match {
     pub participants: Vec<MatchParticipant>,
     pub queue_id: u16,
     pub game_duration: u64,
     pub game_creation: u128,
-}
-
-impl From<MatchDto> for Match {
-    fn from(value: MatchDto) -> Self {
-        Self {
-            participants: value
-                .info
-                .participants
-                .into_iter()
-                .map(|participant| participant.into())
-                .collect(),
-            queue_id: value.info.queue_id,
-            game_duration: value.info.game_duration,
-            game_creation: value.info.game_creation,
-        }
-    }
 }
 
 impl Match {
@@ -54,14 +39,14 @@ impl Match {
         format!("{:02}:{:02}", minutes, seconds)
     }
 
-    pub async fn try_into_match_ranked<C>(
+    pub async fn try_into_match_ranked<Api, Cache>(
         self,
         ranking_of: &Account,
         api: Arc<dyn LeagueApi>,
-        cache: &C,
+        cache: &Cache,
     ) -> Result<MatchRanked, RiotMatchError>
     where
-        C: CachedLeagueSource,
+        Cache: CachedLeagueSource,
     {
         let queue_type: QueueType = self.queue_id.into();
         let cached_league = cache
@@ -74,12 +59,12 @@ impl Match {
             ))?;
 
         let current_leagues = api
-            .get_leagues(ranking_of.puuid.clone(), Box::new(ranking_of.region))
+            .get_leagues(ranking_of.puuid.clone(), ranking_of.region)
             .await
-            .map_err(RiotMatchError::RiotApiError)?;
+            .map_err(|e| RiotMatchError::RiotApiError(e))?;
         let current_league = current_leagues
             .into_iter()
-            .find(|league| league.queue_type.eq(queue_type.as_str()))
+            .find(|league| league.queue_type().eq(queue_type.as_str()))
             .ok_or(RiotMatchError::NoApiLeagueFound(
                 queue_type.as_str().to_string(),
                 ranking_of.puuid.clone(),
@@ -163,27 +148,10 @@ impl MatchParticipant {
     }
 }
 
-impl From<ParticipantDto> for MatchParticipant {
-    fn from(value: ParticipantDto) -> Self {
-        Self {
-            puuid: value.puuid,
-            champion_name: value.champion_name,
-            team_position: value.team_position,
-            win: value.win,
-            kills: value.kills,
-            deaths: value.deaths,
-            assists: value.assists,
-            profile_icon: value.profile_icon,
-            riot_id_game_name: value.riot_id_game_name,
-            riot_id_tagline: value.riot_id_tagline,
-        }
-    }
-}
-
 pub struct MatchRanked {
     pub base: Match,
-    pub current_league: OnlineLeague,
-    pub cached_league: CachedLeague,
+    pub current_league: League,
+    pub cached_league: League,
 }
 
 impl MatchRanked {
@@ -194,7 +162,7 @@ impl MatchRanked {
 
         let cached = &self.cached_league;
 
-        let mut diff = current_league.league_points as i16 - cached.points as i16;
+        let mut diff = current_league.league_points() as i16 - cached.points as i16;
 
         if (diff < 0 && won) || (diff > 0 && !won) {
             diff += if won { 100 } else { -100 };

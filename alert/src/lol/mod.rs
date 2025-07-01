@@ -1,8 +1,9 @@
 //! Helpers to build Discord embeds for League of Legends matches.
 
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
-use tentrackule_types::{
+use tentrackule_shared::{
     lol_match::{Match, MatchParticipant, MatchRanked},
+    traits::api::{LeaguePoints, LeagueRank},
     QueueType,
 };
 
@@ -109,9 +110,9 @@ fn ranked_alert(focused_participant: &MatchParticipant, match_data: &MatchRanked
         "Rank",
         format!(
             "{} {} ({} LPs)",
-            match_data.current_league.clone().tier,
-            match_data.current_league.clone().rank,
-            match_data.current_league.clone().league_points
+            match_data.current_league.clone().tier(),
+            match_data.current_league.clone().rank(),
+            match_data.current_league.clone().league_points()
         ),
         false,
     )]);

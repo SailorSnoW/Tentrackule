@@ -16,6 +16,8 @@ impl DbMigration for V3 {
             points INTEGER,
             wins INTEGER,
             losses INTEGER,
+            rank TEXT,
+            tier TEXT,
             PRIMARY KEY (puuid, queue_type),
             FOREIGN KEY (puuid) REFERENCES accounts(puuid)
         )",

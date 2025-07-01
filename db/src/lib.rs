@@ -9,12 +9,12 @@ use async_trait::async_trait;
 use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{params, Connection, OptionalExtension};
-use tentrackule_types::{
+use tentrackule_shared::{
     traits::{
-        CachedAccountGuildSource, CachedAccountSource, CachedLeagueSource, CachedSettingSource,
-        CachedSourceError,
+        CacheFull, CachedAccountGuildSource, CachedAccountSource, CachedLeagueSource,
+        CachedSettingSource, CachedSourceError,
     },
-    Account, CachedLeague, QueueType,
+    Account, League, QueueType,
 };
 use tokio::sync::{Mutex, OnceCell};
 use tracing::{debug, info};
@@ -240,17 +240,20 @@ impl CachedLeagueSource for SharedDatabase {
         &self,
         puuid: String,
         queue_type: QueueType,
-    ) -> Result<Option<CachedLeague>, Box<dyn Error + Send + Sync>> {
+    ) -> Result<Option<League>, Box<dyn Error + Send + Sync>> {
         let db = self.conn.lock().await;
 
         db.query_row(
-            "SELECT points, wins, losses FROM leagues WHERE puuid = ?1 AND queue_type = ?2",
+            "SELECT points, rank, tier, wins, losses, queue_type FROM leagues WHERE puuid = ?1 AND queue_type = ?2",
             params![puuid, queue_type.as_str()],
             |row| {
-                Ok(CachedLeague {
+                Ok(League {
                     points: row.get(0)?,
-                    wins: row.get(1)?,
-                    losses: row.get(2)?,
+                    rank: row.get(1)?,
+                    tier: row.get(2)?,
+                    wins: row.get(3)?,
+                    losses: row.get(4)?,
+                    queue_type: row.get(5)?
                 })
             },
         )
@@ -261,18 +264,19 @@ impl CachedLeagueSource for SharedDatabase {
     async fn set_league_for(
         &self,
         puuid: String,
-        queue_type: QueueType,
-        league: CachedLeague,
+        league: League,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db = self.conn.lock().await;
 
         db.execute(
-            "INSERT OR REPLACE INTO leagues (puuid, queue_type, points, wins, losses) VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![puuid, queue_type.as_str(), league.points, league.wins, league.losses],
+            "INSERT OR REPLACE INTO leagues (puuid, queue_type, points, wins, losses, rank, tier) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![puuid, league.queue_type.as_str(), league.points, league.wins, league.losses, league.rank, league.tier],
         )?;
         Ok(())
     }
 }
+
+impl CacheFull for SharedDatabase {}
 
 impl SharedDatabase {
     /// Create a new database at the given path.
@@ -356,6 +360,7 @@ impl SharedDatabase {
                 migrations::V1::do_migration(&db);
                 migrations::V2::do_migration(&db);
                 migrations::V3::do_migration(&db);
+                migrations::V4::do_migration(&db);
 
                 info!("database ready");
             })

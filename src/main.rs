@@ -7,10 +7,11 @@ use std::{env, sync::Arc};
 
 use dotenv::dotenv;
 use result_poller::ResultPoller;
-use tentrackule_bot::{DiscordAlertDispatcher, DiscordBot};
+use tentrackule_alert::alert_dispatcher::DiscordAlertDispatcher;
+use tentrackule_bot::DiscordBot;
 use tentrackule_db::SharedDatabase;
 use tentrackule_riot_api::api::LolApiClient;
-use tentrackule_types::init_ddragon_version;
+use tentrackule_shared::init_ddragon_version;
 use tracing::{error, info};
 
 mod logging;

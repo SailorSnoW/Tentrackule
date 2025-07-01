@@ -1,15 +1,12 @@
 use std::{env, sync::LazyLock};
 
-use tentrackule_riot_api::api::{
-    traits::{LeagueExt, RegionEndpoint},
-    types::LeagueEntryDto,
-};
+use serde::Deserialize;
 use tracing::info;
+use traits::api::{LeaguePoints, LeagueQueueType, LeagueRank};
 
+pub mod errors;
 pub mod lol_match;
 pub mod traits;
-
-pub type LeaguePoints = u16;
 
 /// Loaded once at startup to avoid repeated environment lookups.
 pub static DDRAGON_VERSION: LazyLock<String> =
@@ -40,8 +37,8 @@ pub enum Region {
     Tw,
 }
 
-impl RegionEndpoint for Region {
-    fn to_global_endpoint(&self) -> String {
+impl Region {
+    pub fn to_global_endpoint(&self) -> String {
         match self {
             Region::Lan => "americas.api.riotgames.com".to_string(),
             Region::Las => "americas.api.riotgames.com".to_string(),
@@ -58,7 +55,7 @@ impl RegionEndpoint for Region {
         }
     }
 
-    fn to_endpoint(&self) -> String {
+    pub fn to_endpoint(&self) -> String {
         match self {
             Region::Lan => "la1.api.riotgames.com".to_string(),
             Region::Las => "la2.api.riotgames.com".to_string(),
@@ -164,27 +161,44 @@ pub struct Account {
     pub last_match_id: String,
 }
 
-/// Representation of a league cached by the bot which is stored in the database.
-#[derive(Debug, Clone)]
-pub struct CachedLeague {
-    pub points: LeaguePoints,
+/// Representation of a league used by the bot which is stored in the database.
+#[derive(Deserialize, Debug, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct League {
+    pub queue_type: String,
+    pub points: u16,
     pub wins: u16,
     pub losses: u16,
+    pub rank: String,
+    pub tier: String,
 }
 
-impl LeagueExt for CachedLeague {
+impl League {
+    pub fn is_ranked_solo_duo(&self) -> bool {
+        self.queue_type.eq("RANKED_SOLO_5x5")
+    }
+
+    pub fn is_ranked_flex(&self) -> bool {
+        self.queue_type.eq("RANKED_FLEX_SR")
+    }
+}
+
+impl LeaguePoints for League {
     fn league_points(&self) -> u16 {
         self.points
     }
 }
-
-impl From<LeagueEntryDto> for CachedLeague {
-    fn from(value: LeagueEntryDto) -> Self {
-        Self {
-            points: value.league_points,
-            wins: value.wins,
-            losses: value.losses,
-        }
+impl LeagueRank for League {
+    fn rank(&self) -> String {
+        self.rank.clone()
+    }
+    fn tier(&self) -> String {
+        self.tier.clone()
+    }
+}
+impl LeagueQueueType for League {
+    fn queue_type(&self) -> String {
+        self.queue_type.clone()
     }
 }
 

@@ -1,7 +1,7 @@
 //! Slash command implementations used by the Discord bot.
 
 use poise::serenity_prelude::ChannelType;
-use tentrackule_types::{Account, Region};
+use tentrackule_shared::{Account, Region};
 use tracing::{debug, info};
 
 use super::{serenity, Context, Error};
@@ -49,8 +49,8 @@ pub async fn track(
 
     let cached_account = Account {
         puuid: api_account_data.puuid,
-        game_name: api_account_data.game_name.unwrap(),
-        tag_line: api_account_data.tag_line.unwrap(),
+        game_name: api_account_data.game_name,
+        tag_line: api_account_data.tag_line,
         region,
         last_match_id: Default::default(),
     };

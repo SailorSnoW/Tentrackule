@@ -6,7 +6,12 @@
 use poise::serenity_prelude::CreateEmbed;
 use thiserror::Error;
 
+pub mod alert_dispatcher;
 pub mod lol;
+pub mod message_sender;
+
+pub use alert_dispatcher::{AlertDispatch, AlertDispatcher};
+pub use message_sender::MessageSender;
 
 /// Errors that can occur while creating an alert message.
 #[derive(Error, Debug)]

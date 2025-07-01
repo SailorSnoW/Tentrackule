@@ -21,7 +21,7 @@ tentrackule-riot-api = { path = "./riot-api" }
 tentrackule-db = { path = "./db" }
 tentrackule-bot = { path = "./bot" }
 tentrackule-alert = { path = "./alert" }
-tentrackule-types = { path = "./types/" }
+tentrackule-shared = { path = "./shared" }
 
 [workspace]
 members = [
@@ -29,5 +29,5 @@ members = [
     "db",
     "bot",
     "alert",
-    "types"
+    "shared"
 ]

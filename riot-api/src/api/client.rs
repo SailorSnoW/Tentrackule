@@ -11,45 +11,14 @@ use governor::{
 use nonzero_ext::nonzero;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use tentrackule_shared::{
+    traits::api::{AccountApi, ApiError, ApiRequest},
+    Account, Region,
+};
 
-use crate::types::{RiotApiError, RiotApiResponse};
+use crate::types::RiotApiError;
 
 use super::metrics::RequestMetrics;
-
-/// Trait implemented by structures capable of performing raw HTTP requests to the riot API.
-#[async_trait]
-pub trait ApiRequest: Send + Sync + Debug {
-    async fn request(&self, path: String) -> RiotApiResponse<Bytes>;
-}
-
-/// Riot Account-V1 API as described in the official documentation.
-#[async_trait]
-pub trait AccountApi: ApiRequest {
-    fn route(&self) -> &'static str {
-        "https://europe.api.riotgames.com/riot/account/v1/accounts"
-    }
-
-    async fn get_account_by_riot_id(
-        &self,
-        game_name: String,
-        tag_line: String,
-    ) -> RiotApiResponse<AccountDto> {
-        tracing::trace!(
-            "[AccountV1 API] get_account_by_riot_id {}#{}",
-            game_name,
-            tag_line
-        );
-        let path = format!(
-            "{}/by-riot-id/{}/{}",
-            Self::route(self),
-            game_name,
-            tag_line
-        );
-
-        let raw = self.request(path).await?;
-        serde_json::from_slice(&raw).map_err(RiotApiError::Serde)
-    }
-}
 
 /// Basic HTTP client used to perform requests against Riot endpoints.
 #[derive(Debug)]
@@ -77,7 +46,7 @@ impl ApiClientBase {
 
 #[async_trait]
 impl ApiRequest for ApiClientBase {
-    async fn request(&self, path: String) -> RiotApiResponse<Bytes> {
+    async fn request(&self, path: String) -> Result<Bytes, ApiError> {
         // Ensure we do not enforce the RIOT API rate limits before doing any request
         self.limiter.until_ready().await;
         self.metrics.inc();
@@ -90,14 +59,45 @@ impl ApiRequest for ApiClientBase {
             .await
             .map_err(RiotApiError::Reqwest)?;
         match res.status() {
-            StatusCode::OK => res.bytes().map_err(RiotApiError::Reqwest).await,
-            _ => Err(RiotApiError::Status(res.status())),
+            StatusCode::OK => {
+                res.bytes()
+                    .map_err(|e| RiotApiError::Reqwest(e).into())
+                    .await
+            }
+            _ => Err(RiotApiError::Status(res.status()).into()),
         }
     }
 }
 
 #[async_trait]
-impl AccountApi for ApiClientBase {}
+impl AccountApi for ApiClientBase {
+    fn route(&self) -> &'static str {
+        "https://europe.api.riotgames.com/riot/account/v1/accounts"
+    }
+
+    async fn get_account_by_riot_id(
+        &self,
+        game_name: String,
+        tag_line: String,
+    ) -> Result<Account, ApiError> {
+        tracing::trace!(
+            "[AccountV1 API] get_account_by_riot_id {}#{}",
+            game_name,
+            tag_line
+        );
+        let path = format!(
+            "{}/by-riot-id/{}/{}",
+            Self::route(self),
+            game_name,
+            tag_line
+        );
+
+        let raw = self.request(path).await?;
+        let account_dto: AccountDto = serde_json::from_slice(&raw).map_err(RiotApiError::Serde)?;
+
+        Ok(account_dto.into())
+    }
+}
 
 /// Representation of the account data response.
 #[derive(Deserialize, Debug)]
@@ -108,8 +108,22 @@ pub struct AccountDto {
     pub tag_line: Option<String>,
 }
 
+impl From<AccountDto> for Account {
+    fn from(value: AccountDto) -> Self {
+        Self {
+            puuid: value.puuid,
+            game_name: value.game_name.unwrap(),
+            tag_line: value.tag_line.unwrap(),
+            region: Region::Euw,
+            last_match_id: Default::default(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use crate::types::RiotApiError;
+
     use super::{AccountApi, ApiClientBase, ApiRequest};
     use dotenv::dotenv;
     use std::env;
@@ -130,8 +144,8 @@ mod tests {
             account.puuid,
             "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
         );
-        assert_eq!(account.game_name, Some("Le Conservateur".to_string()));
-        assert_eq!(account.tag_line, Some("3012".to_string()))
+        assert_eq!(account.game_name, "Le Conservateur".to_string());
+        assert_eq!(account.tag_line, "3012".to_string())
     }
 
     #[tokio::test]
@@ -146,6 +160,11 @@ mod tests {
 
         let res = client.request(bad_url).await;
 
-        assert!(matches!(res, Err(super::RiotApiError::Reqwest(_))));
+        assert!(res
+            .as_ref()
+            .err()
+            .and_then(|e| e.downcast_ref::<RiotApiError>())
+            .map(|e| matches!(e, RiotApiError::Reqwest(_)))
+            .unwrap_or(false));
     }
 }

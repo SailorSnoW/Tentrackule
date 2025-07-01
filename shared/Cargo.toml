@@ -1,5 +1,5 @@
 [package]
-name = "tentrackule-types"
+name = "tentrackule-shared"
 description = "Shared types for Tentrackule components"
 version = "0.1.0"
 edition = "2021"
@@ -18,8 +18,7 @@ futures = "0.3"
 urlencoding = "2.1.3"
 tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
 async-trait = "0.1"
-
-tentrackule-riot-api = {path = "../riot-api" }
+bytes = "1"
 
 [dev-dependencies]
 dotenv = "0.15"

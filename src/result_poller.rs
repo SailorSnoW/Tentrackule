@@ -6,12 +6,12 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tentrackule_bot::AlertDispatch;
-use tentrackule_riot_api::api::{types::MatchDto, LolApiFull};
-use tentrackule_types::{
+use tentrackule_alert::AlertDispatch;
+use tentrackule_riot_api::api::LolApiClient;
+use tentrackule_shared::{
     lol_match::Match,
-    traits::{CachedAccountSource, CachedLeagueSource},
-    Account, CachedLeague, QueueType, Region,
+    traits::{api::LolApiFull, CachedAccountSource, CachedLeagueSource},
+    Account, League, QueueType, Region,
 };
 use tracing::{debug, error, info};
 
@@ -112,7 +112,7 @@ where
             return;
         };
 
-        if self.start_time > match_data.info.game_creation {
+        if self.start_time > match_data.game_creation {
             debug!(
                 "{}#{} old match ignored",
                 account.game_name, account.tag_line
@@ -120,15 +120,18 @@ where
             return;
         }
 
-        self.dispatch_alert_if_needed(account, match_data.into())
-            .await;
+        self.dispatch_alert_if_needed(account, match_data).await;
     }
 
     async fn dispatch_alert_if_needed(&self, account: Account, match_data: Match) {
         match match_data.queue_type() {
-            QueueType::SoloDuo => {
+            QueueType::SoloDuo | QueueType::Flex => {
                 let match_ranked = match match_data
-                    .try_into_match_ranked(&account, self.lol_api.clone(), &self.db)
+                    .try_into_match_ranked::<LolApiClient, C>(
+                        &account,
+                        self.lol_api.clone(),
+                        &self.db,
+                    )
                     .await
                 {
                     Ok(data) => data,
@@ -139,44 +142,12 @@ where
                 };
 
                 debug!(
-                    "updating league to {} for {}#{}",
-                    match_ranked.current_league.league_points, account.game_name, account.tag_line
+                    "updating league to {:?} for {}#{}",
+                    match_ranked.current_league, account.game_name, account.tag_line
                 );
                 self.set_cached_league_for(
                     account.puuid.clone(),
-                    QueueType::SoloDuo,
-                    match_ranked.current_league.clone().into(),
-                )
-                .await;
-
-                debug!(
-                    "dispatching alert for {}#{}",
-                    account.game_name, account.tag_line
-                );
-                self.alert_dispatcher
-                    .dispatch_alert(&account.puuid, match_ranked)
-                    .await;
-            }
-            QueueType::Flex => {
-                let match_ranked = match match_data
-                    .try_into_match_ranked(&account, self.lol_api.clone(), &self.db)
-                    .await
-                {
-                    Ok(data) => data,
-                    Err(e) => {
-                        error!("conversion of match into a ranked match failed: {}", e);
-                        return;
-                    }
-                };
-
-                debug!(
-                    "updating league to {} for {}#{}",
-                    match_ranked.current_league.league_points, account.game_name, account.tag_line
-                );
-                self.set_cached_league_for(
-                    account.puuid.clone(),
-                    QueueType::Flex,
-                    match_ranked.current_league.clone().into(),
+                    match_ranked.current_league.clone(),
                 )
                 .await;
 
@@ -223,18 +194,13 @@ where
         }
     }
 
-    async fn set_cached_league_for(
-        &self,
-        puuid: String,
-        queue_type: QueueType,
-        league: CachedLeague,
-    ) {
-        if let Err(e) = self.db.set_league_for(puuid, queue_type, league).await {
+    async fn set_cached_league_for(&self, puuid: String, league: League) {
+        if let Err(e) = self.db.set_league_for(puuid, league).await {
             error!("Failed to send DB request: {}", e);
         }
     }
 
-    async fn fetch_match_data(&self, match_id: String, region: Region) -> Option<MatchDto> {
+    async fn fetch_match_data(&self, match_id: String, region: Region) -> Option<Match> {
         let request = self.lol_api.get_match(match_id, region).await;
         match request {
             Ok(m) => Some(m),
