@@ -29,9 +29,11 @@ async fn main() {
     db.init().await;
 
     let lol_api: Arc<LolApiClient> = LolApiClient::new(get_api_key_from_env()).into();
+
     let bot = DiscordBot::new(Arc::new(db.clone()), lol_api.clone()).await;
     let alert_dispatcher: DiscordAlertDispatcher<SharedDatabase> =
         DiscordAlertDispatcher::new(Arc::new(bot.client().http.clone()), db.clone());
+
     let result_poller = ResultPoller::new(lol_api.clone(), db, alert_dispatcher);
 
     lol_api.start_metrics_logging();
