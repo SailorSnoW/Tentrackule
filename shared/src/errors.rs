@@ -6,7 +6,7 @@ use thiserror::Error;
 pub enum RiotMatchError {
     #[error("The request account puuid is not part of the match")]
     PuuidNotInMatch,
-    #[error("an error occured while fetching the cached league.")]
+    #[error("an error occured while fetching the cached league: {0}.")]
     CantRetrieveCachedLeague(Box<dyn Error>),
     #[error("No cached league is existing for puuid: {0} with queue_id: {1}.")]
     NoCachedLeagueFound(String, u16),
