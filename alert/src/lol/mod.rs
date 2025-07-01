@@ -99,11 +99,17 @@ fn flex_ranked_alert(
 }
 
 fn ranked_alert(focused_participant: &MatchParticipant, match_data: &MatchRanked) -> CreateEmbed {
-    let mut embed = base(focused_participant, &match_data.base, true).description(format!(
-        "**{}** just {} a ranked game !",
-        focused_participant.riot_id_game_name,
-        focused_participant.to_formatted_win_string(),
-    ));
+    let mut embed = base(focused_participant, &match_data.base, true)
+        .description(format!(
+            "**{}** just {} a ranked game !",
+            focused_participant.riot_id_game_name,
+            focused_participant.to_formatted_win_string(),
+        ))
+        .title(format!(
+            "{} ({:+} LPs)",
+            focused_participant.to_title_win_string(),
+            match_data.calculate_league_points_difference(focused_participant.win)
+        ));
 
     // Rank informations
     embed = embed.fields(vec![(

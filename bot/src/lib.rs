@@ -15,10 +15,9 @@ use handler::event_handler;
 mod commands;
 mod handler;
 
-// Types used by all command functions
+// Types use by all command functions
 /// Error type shared by all slash commands.
 type Error = Box<dyn std::error::Error + Send + Sync>;
-#[allow(unused)]
 type Context<'a> = poise::Context<'a, Data, Error>;
 
 /// Wrapper around a Serenity [`Client`] with all command handlers registered.
