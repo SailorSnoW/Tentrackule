@@ -37,3 +37,33 @@ impl RequestMetrics {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Arc;
+    use std::time::Duration;
+
+    #[test]
+    fn inc_increases_count() {
+        let metrics = RequestMetrics::new();
+        metrics.inc();
+        metrics.inc();
+
+        let metrics = Arc::try_unwrap(metrics).expect("arc should be unique");
+        assert_eq!(metrics.count.load(Ordering::Relaxed), 2);
+    }
+
+    #[tokio::test]
+    async fn log_loop_runs_once() {
+        tokio::time::pause();
+
+        let metrics = RequestMetrics::new();
+        let cloned = metrics.clone();
+        let handle = tokio::spawn(async move { cloned.log_loop().await });
+
+        tokio::time::advance(Duration::from_secs(61)).await;
+        handle.abort();
+        let _ = handle.await;
+    }
+}

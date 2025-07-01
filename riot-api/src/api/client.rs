@@ -72,7 +72,11 @@ impl ApiRequest for ApiClientBase {
 #[async_trait]
 impl AccountApi for ApiClientBase {
     fn route(&self) -> &'static str {
-        "https://europe.api.riotgames.com/riot/account/v1/accounts"
+        if cfg!(test) {
+            "http://europe.api.riotgames.com/riot/account/v1/accounts"
+        } else {
+            "https://europe.api.riotgames.com/riot/account/v1/accounts"
+        }
     }
 
     async fn get_account_by_riot_id(
@@ -100,7 +104,7 @@ impl AccountApi for ApiClientBase {
 }
 
 /// Representation of the account data response.
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountDto {
     pub puuid: String,
@@ -122,11 +126,18 @@ impl From<AccountDto> for Account {
 
 #[cfg(test)]
 mod tests {
-    use crate::types::RiotApiError;
+    use crate::{
+        api::{metrics::RequestMetrics, types::AccountDto},
+        types::RiotApiError,
+    };
 
     use super::{AccountApi, ApiClientBase, ApiRequest};
     use dotenv::dotenv;
+    use governor::{Quota, RateLimiter};
+    use nonzero_ext::nonzero;
+    use serde_json::json;
     use std::env;
+    use tentrackule_shared::Account;
 
     #[tokio::test]
     #[ignore = "API Key required"]
@@ -166,5 +177,56 @@ mod tests {
             .and_then(|e| e.downcast_ref::<RiotApiError>())
             .map(|e| matches!(e, RiotApiError::Reqwest(_)))
             .unwrap_or(false));
+    }
+
+    #[test]
+    fn account_dto_into_account() {
+        let dto = AccountDto {
+            puuid: "id".to_string(),
+            game_name: Some("Name".to_string()),
+            tag_line: Some("Tag".to_string()),
+        };
+
+        let account: Account = dto.clone().into();
+        assert_eq!(account.puuid, dto.puuid);
+        assert_eq!(account.game_name, "Name".to_string());
+        assert_eq!(account.tag_line, "Tag".to_string());
+    }
+
+    #[tokio::test]
+    async fn get_account_by_riot_id_local_mock() {
+        use httpmock::prelude::*;
+
+        let server = MockServer::start_async().await;
+        let mock = server.mock(|when, then| {
+            when.method(GET)
+                .path("/riot/account/v1/accounts/by-riot-id/Game/Tag");
+            then.status(200).json_body(json!({
+                "puuid": "puuid1",
+                "gameName": "Game",
+                "tagLine": "Tag"
+            }));
+        });
+
+        let client = reqwest::Client::new();
+        let quota = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
+        let api = ApiClientBase {
+            client,
+            limiter: RateLimiter::direct(quota),
+            key: "KEY".to_string(),
+            metrics: RequestMetrics::new(),
+        };
+
+        let route = format!(
+            "{}/riot/account/v1/accounts/by-riot-id/Game/Tag",
+            server.base_url()
+        );
+        let raw = api.request(route).await.unwrap();
+        let account_dto: AccountDto = serde_json::from_slice(&raw).unwrap();
+        let account: Account = account_dto.into();
+
+        mock.assert();
+        assert_eq!(account.game_name, "Game".to_string());
+        assert_eq!(account.tag_line, "Tag".to_string());
     }
 }
