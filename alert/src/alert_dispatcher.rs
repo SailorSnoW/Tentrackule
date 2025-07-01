@@ -22,7 +22,7 @@ pub type DiscordAlertDispatcher<Cache> = AlertDispatcher<Arc<Http>, Cache>;
 
 /// Implementation of [`AlertDispatch`] using a [`MessageSender`] and the database.
 pub struct AlertDispatcher<S, C> {
-    sender: Arc<S>,
+    sender: S,
     db: C,
 }
 
@@ -31,7 +31,7 @@ where
     C: CachedAccountGuildSource,
 {
     /// Create a new dispatcher using the given message sender and database handle.
-    pub fn new(sender: Arc<S>, db: C) -> Self {
+    pub fn new(sender: S, db: C) -> Self {
         Self { sender, db }
     }
 

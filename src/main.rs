@@ -32,7 +32,7 @@ async fn main() {
 
     let bot = DiscordBot::new(Arc::new(db.clone()), lol_api.clone()).await;
     let alert_dispatcher: DiscordAlertDispatcher<SharedDatabase> =
-        DiscordAlertDispatcher::new(Arc::new(bot.client().http.clone()), db.clone());
+        DiscordAlertDispatcher::new(bot.client().http.clone(), db.clone());
 
     let result_poller = ResultPoller::new(lol_api.clone(), db, alert_dispatcher);
 
