@@ -4,13 +4,14 @@ use async_trait::async_trait;
 use dotenv::dotenv;
 use poise::serenity_prelude::{ChannelId, CreateEmbed, GuildId, Http};
 use tentrackule_alert::{
-    alert_dispatcher::AlertDispatcher, Alert, AlertCreationError, AlertDispatch, TryIntoAlert,
+    alert_dispatcher::AlertDispatcher, Alert, AlertCreationError, AlertDispatch, QueueTyped,
+    TryIntoAlert,
 };
 use tentrackule_shared::{
     init_ddragon_version,
     lol_match::{Match, MatchParticipant, MatchRanked},
-    traits::{CachedAccountGuildSource, CachedSourceError},
-    Account, League,
+    traits::{CachedAccountGuildSource, CachedSettingSource, CachedSourceError},
+    Account, League, QueueType,
 };
 
 struct DummyAlert;
@@ -23,8 +24,49 @@ impl TryIntoAlert for DummyAlert {
     }
 }
 
+impl QueueTyped for DummyAlert {
+    fn queue_type(&self) -> QueueType {
+        QueueType::NormalDraft
+    }
+}
+
 struct TestCache {
     channel: ChannelId,
+}
+
+#[async_trait]
+impl CachedSettingSource for TestCache {
+    async fn set_alert_channel(
+        &self,
+        _guild_id: GuildId,
+        _channel_id: ChannelId,
+    ) -> Result<(), CachedSourceError> {
+        Ok(())
+    }
+
+    async fn get_alert_channel(
+        &self,
+        _guild_id: GuildId,
+    ) -> Result<Option<ChannelId>, CachedSourceError> {
+        Ok(Some(self.channel))
+    }
+
+    async fn set_queue_alert_enabled(
+        &self,
+        _guild_id: GuildId,
+        _queue_type: QueueType,
+        _enabled: bool,
+    ) -> Result<(), CachedSourceError> {
+        Ok(())
+    }
+
+    async fn is_queue_alert_enabled(
+        &self,
+        _guild_id: GuildId,
+        _queue_type: QueueType,
+    ) -> Result<bool, CachedSourceError> {
+        Ok(true)
+    }
 }
 
 fn sample_participant(puuid: &str, win: bool, role: &str) -> MatchParticipant {
@@ -45,7 +87,7 @@ fn sample_participant(puuid: &str, win: bool, role: &str) -> MatchParticipant {
 fn sample_league(queue: &str, lp: u16) -> League {
     League {
         queue_type: queue.to_string(),
-        points: lp,
+        league_points: lp,
         wins: 1,
         losses: 1,
         rank: "I".to_string(),

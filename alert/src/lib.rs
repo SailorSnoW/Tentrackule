@@ -4,6 +4,7 @@
 //! sent by the Discord bot when a tracked game finishes.
 
 use poise::serenity_prelude::CreateEmbed;
+use tentrackule_shared::{lol_match, QueueType};
 use thiserror::Error;
 
 pub mod alert_dispatcher;
@@ -29,4 +30,21 @@ pub type Alert = CreateEmbed;
 pub trait TryIntoAlert {
     /// Convert the value into an [`Alert`].
     fn try_into_alert(&self, puuid_focus: &str) -> Result<Alert, AlertCreationError>;
+}
+
+/// Types that expose the queue type associated with them.
+pub trait QueueTyped {
+    fn queue_type(&self) -> QueueType;
+}
+
+impl QueueTyped for lol_match::Match {
+    fn queue_type(&self) -> QueueType {
+        tentrackule_shared::lol_match::Match::queue_type(self)
+    }
+}
+
+impl QueueTyped for lol_match::MatchRanked {
+    fn queue_type(&self) -> QueueType {
+        self.base.queue_type()
+    }
 }

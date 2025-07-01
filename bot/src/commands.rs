@@ -1,13 +1,36 @@
 //! Slash command implementations used by the Discord bot.
 
 use poise::serenity_prelude::ChannelType;
-use tentrackule_shared::{Account, Region};
+use tentrackule_shared::{Account, QueueType, Region};
 use tracing::{debug, info};
 
 use super::{serenity, Context, Error};
 
 /// Error message shown when a command is used outside of a guild context.
 const GUILD_ONLY_ERR: &str = "❌ This command can only be used inside a guild.";
+
+#[derive(Debug, Clone, Copy, poise::ChoiceParameter)]
+pub enum QueueAlertType {
+    #[name = "Ranked Solo/Duo"]
+    SoloDuo,
+    #[name = "Ranked Flex"]
+    Flex,
+    #[name = "Normal Draft"]
+    NormalDraft,
+    #[name = "ARAM"]
+    Aram,
+}
+
+impl From<QueueAlertType> for QueueType {
+    fn from(q: QueueAlertType) -> Self {
+        match q {
+            QueueAlertType::SoloDuo => QueueType::SoloDuo,
+            QueueAlertType::Flex => QueueType::Flex,
+            QueueAlertType::NormalDraft => QueueType::NormalDraft,
+            QueueAlertType::Aram => QueueType::Aram,
+        }
+    }
+}
 
 /// Return the [`GuildId`] of the context or notify the user if the command was
 /// run outside a guild.
@@ -168,6 +191,37 @@ pub async fn set_alert_channel(
         channel
     );
     ctx.say(response).await?;
+    Ok(())
+}
+
+/// Enable or disable alerts for a specific queue type in this server.
+#[poise::command(slash_command, category = "Settings", ephemeral)]
+pub async fn set_queue_alert(
+    ctx: Context<'_>,
+    #[description = "Queue type"] queue: QueueAlertType,
+    #[description = "Enable or disable alerts"] enabled: bool,
+) -> Result<(), Error> {
+    enter_command_log("set_queue_alert");
+
+    let Some(guild_id) = require_guild(&ctx).await else {
+        return Ok(());
+    };
+
+    if let Err(e) = ctx
+        .data()
+        .db
+        .set_queue_alert_enabled(guild_id, queue.into(), enabled)
+        .await
+    {
+        tracing::error!("DB error while setting queue alert: {}", e);
+        ctx.say("❌ Internal Error: Couldn't update queue alert setting.")
+            .await?;
+        return Ok(());
+    }
+
+    let status = if enabled { "enabled" } else { "disabled" };
+    ctx.say(format!("✅ Alerts for {:?} are now {}.", queue, status))
+        .await?;
     Ok(())
 }
 

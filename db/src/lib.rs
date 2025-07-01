@@ -66,6 +66,44 @@ impl CachedSettingSource for SharedDatabase {
 
         Ok(maybe_channel_id_u64.map(Into::into))
     }
+
+    async fn set_queue_alert_enabled(
+        &self,
+        guild_id: GuildId,
+        queue_type: QueueType,
+        enabled: bool,
+    ) -> Result<(), CachedSourceError> {
+        let guild_id_u64: u64 = guild_id.into();
+        let enabled_i64: i64 = if enabled { 1 } else { 0 };
+
+        let db = self.conn.lock().await;
+
+        db.execute(
+            "INSERT OR REPLACE INTO queue_alert_settings (guild_id, queue_type, enabled) VALUES (?1, ?2, ?3)",
+            params![guild_id_u64, queue_type.as_str(), enabled_i64],
+        )?;
+        Ok(())
+    }
+
+    async fn is_queue_alert_enabled(
+        &self,
+        guild_id: GuildId,
+        queue_type: QueueType,
+    ) -> Result<bool, CachedSourceError> {
+        let guild_id_u64: u64 = guild_id.into();
+
+        let db = self.conn.lock().await;
+
+        let maybe_enabled: Option<i64> = db
+            .query_row(
+                "SELECT enabled FROM queue_alert_settings WHERE guild_id = ?1 AND queue_type = ?2",
+                params![guild_id_u64, queue_type.as_str()],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        Ok(maybe_enabled.map(|v| v != 0).unwrap_or(true))
+    }
 }
 
 #[async_trait]
@@ -356,6 +394,7 @@ impl SharedDatabase {
                 migrations::V2::do_migration(&db);
                 migrations::V3::do_migration(&db);
                 migrations::V4::do_migration(&db);
+                migrations::V5::do_migration(&db);
 
                 info!("database ready");
             })

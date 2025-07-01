@@ -3,7 +3,9 @@
 //! This crate exposes the [`DiscordBot`] type which wraps a Serenity client and
 //! provides the command handlers used to configure tracking.
 
-use commands::{current_alert_channel, set_alert_channel, show_tracked, track, untrack};
+use commands::{
+    current_alert_channel, set_alert_channel, set_queue_alert, show_tracked, track, untrack,
+};
 use poise::serenity_prelude as serenity;
 use serenity::*;
 use std::{env, fmt::Debug, sync::Arc};
@@ -35,6 +37,7 @@ impl DiscordBot {
         let framework = poise::Framework::builder()
             .options(poise::FrameworkOptions {
                 commands: vec![
+                    set_queue_alert(),
                     set_alert_channel(),
                     current_alert_channel(),
                     track(),

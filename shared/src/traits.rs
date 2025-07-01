@@ -29,6 +29,19 @@ pub trait CachedSettingSource {
         &self,
         guild_id: GuildId,
     ) -> Result<Option<ChannelId>, CachedSourceError>;
+
+    async fn set_queue_alert_enabled(
+        &self,
+        guild_id: GuildId,
+        queue_type: QueueType,
+        enabled: bool,
+    ) -> Result<(), CachedSourceError>;
+
+    async fn is_queue_alert_enabled(
+        &self,
+        guild_id: GuildId,
+        queue_type: QueueType,
+    ) -> Result<bool, CachedSourceError>;
 }
 
 /// Super-trait to specify the required API to handle caching tracked accounts/guilds/settings...
