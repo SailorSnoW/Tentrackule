@@ -106,9 +106,12 @@ fn ranked_alert(focused_participant: &MatchParticipant, match_data: &MatchRanked
             focused_participant.to_formatted_win_string(),
         ))
         .title(format!(
-            "{} ({:+} LPs)",
+            "{}{}",
             focused_participant.to_title_win_string(),
-            match_data.calculate_league_points_difference(focused_participant.win)
+            match match_data.calculate_league_points_difference(focused_participant.win) {
+                Some(diff) => format!(" ({:+} LPs)", diff),
+                None => String::new(),
+            }
         ));
 
     // Rank informations
@@ -272,7 +275,7 @@ mod tests {
         let ranked = MatchRanked {
             base,
             current_league: league("RANKED_SOLO_5x5"),
-            cached_league: league("RANKED_SOLO_5x5"),
+            cached_league: Some(league("RANKED_SOLO_5x5")),
         };
         let embed = ranked.try_into_alert("p1").unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
@@ -292,7 +295,7 @@ mod tests {
         let ranked = MatchRanked {
             base,
             current_league: league("RANKED_FLEX_SR"),
-            cached_league: league("RANKED_FLEX_SR"),
+            cached_league: Some(league("RANKED_FLEX_SR")),
         };
         let embed = ranked.try_into_alert("p1").unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
@@ -312,7 +315,7 @@ mod tests {
         let ranked = MatchRanked {
             base,
             current_league: league("UNHANDLED"),
-            cached_league: league("UNHANDLED"),
+            cached_league: Some(league("UNHANDLED")),
         };
         match ranked.try_into_alert("p1").unwrap_err() {
             AlertCreationError::UnsupportedQueueType { queue_id } => assert_eq!(queue_id, 999),

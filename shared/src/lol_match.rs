@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use poise::serenity_prelude::Colour;
+use tracing::warn;
 use urlencoding::encode;
 
 use crate::{
@@ -49,14 +50,17 @@ impl Match {
         Cache: CachedLeagueSource,
     {
         let queue_type: QueueType = self.queue_id.into();
-        let cached_league = cache
+        let maybe_cached_league = cache
             .get_league_for(ranking_of.puuid.clone(), queue_type)
             .await
-            .map_err(|e| RiotMatchError::CantRetrieveCachedLeague(e))?
-            .ok_or(RiotMatchError::NoCachedLeagueFound(
-                ranking_of.puuid.clone(),
-                self.queue_id,
-            ))?;
+            .map_err(|e| RiotMatchError::CantRetrieveCachedLeague(e))?;
+
+        if maybe_cached_league.is_none() {
+            warn!(
+                "No cached league is existing for puuid: {} with queue_id: {}.",
+                ranking_of.puuid, self.queue_id
+            )
+        }
 
         let current_leagues = api
             .get_leagues(ranking_of.puuid.clone(), ranking_of.region)
@@ -73,7 +77,7 @@ impl Match {
         Ok(MatchRanked {
             base: self,
             current_league,
-            cached_league,
+            cached_league: maybe_cached_league,
         })
     }
 }
@@ -152,16 +156,15 @@ impl MatchParticipant {
 pub struct MatchRanked {
     pub base: Match,
     pub current_league: League,
-    pub cached_league: League,
+    pub cached_league: Option<League>,
 }
 
 impl MatchRanked {
     /// Calculate the gain/loss of LP between the cached value and the new match data.
     /// Returns a positive number for LP gain, negative for LP loss, or None if data is missing.
-    pub fn calculate_league_points_difference(&self, won: bool) -> i16 {
+    pub fn calculate_league_points_difference(&self, won: bool) -> Option<i16> {
         let current_league = &self.current_league;
-
-        let cached = &self.cached_league;
+        let cached = self.cached_league.as_ref()?;
 
         let mut diff = current_league.league_points() as i16 - cached.league_points as i16;
 
@@ -169,6 +172,6 @@ impl MatchRanked {
             diff += if won { 100 } else { -100 };
         }
 
-        diff
+        Some(diff)
     }
 }

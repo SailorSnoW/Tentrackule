@@ -190,7 +190,7 @@ async fn dispatch_lol_ranked_alert() {
     let ranked = MatchRanked {
         base,
         current_league: sample_league("RANKED_SOLO_5x5", 40),
-        cached_league: sample_league("RANKED_SOLO_5x5", 20),
+        cached_league: Some(sample_league("RANKED_SOLO_5x5", 20)),
     };
 
     dispatcher.dispatch_alert("p1", ranked).await;
@@ -224,7 +224,7 @@ async fn dispatch_lol_flex_ranked_alert() {
     let ranked = MatchRanked {
         base,
         current_league: sample_league("RANKED_FLEX_SR", 40),
-        cached_league: sample_league("RANKED_FLEX_SR", 20),
+        cached_league: Some(sample_league("RANKED_FLEX_SR", 20)),
     };
 
     dispatcher.dispatch_alert("p1", ranked).await;
