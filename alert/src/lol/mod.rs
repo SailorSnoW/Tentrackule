@@ -149,3 +149,174 @@ fn aram_alert(focused_participant: &MatchParticipant, match_data: &Match) -> Cre
             focused_participant.to_formatted_win_string(),
         ))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::Value;
+    use tentrackule_shared::{
+        init_ddragon_version,
+        lol_match::{Match, MatchParticipant, MatchRanked},
+        League,
+    };
+
+    fn sample_participant(puuid: &str, win: bool, role: &str) -> MatchParticipant {
+        MatchParticipant {
+            puuid: puuid.to_string(),
+            champion_name: "Ahri".to_string(),
+            team_position: role.to_string(),
+            win,
+            kills: 1,
+            deaths: 2,
+            assists: 3,
+            profile_icon: 1,
+            riot_id_game_name: "Tester".to_string(),
+            riot_id_tagline: "EUW".to_string(),
+        }
+    }
+
+    fn league(queue: &str) -> League {
+        League {
+            queue_type: queue.to_string(),
+            points: 10,
+            wins: 1,
+            losses: 1,
+            rank: "I".to_string(),
+            tier: "Bronze".to_string(),
+        }
+    }
+
+    #[test]
+    fn normal_draft_alert_contains_role() {
+        init_ddragon_version();
+        let p = sample_participant("p1", true, "JUNGLE");
+        let m = Match {
+            participants: vec![p.clone()],
+            queue_id: 400,
+            game_duration: 90,
+            game_creation: 0,
+        };
+        let embed = m.try_into_alert("p1").unwrap();
+        let data: Value = serde_json::to_value(&embed).unwrap();
+        assert_eq!(data["author"]["name"], "[LoL] Normal Draft");
+        // Role field should be present
+        assert!(data["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|f| f["name"] == "Role"));
+    }
+
+    #[test]
+    fn aram_alert_has_no_role() {
+        init_ddragon_version();
+        let p = sample_participant("p1", false, "UTILITY");
+        let m = Match {
+            participants: vec![p.clone()],
+            queue_id: 450,
+            game_duration: 60,
+            game_creation: 0,
+        };
+        let embed = m.try_into_alert("p1").unwrap();
+        let data: Value = serde_json::to_value(&embed).unwrap();
+        assert_eq!(data["author"]["name"], "[LoL] ARAM");
+        assert!(data["fields"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|f| f["name"] != "Role"));
+    }
+
+    #[test]
+    fn unsupported_queue_returns_error() {
+        init_ddragon_version();
+        let p = sample_participant("p1", true, "TOP");
+        let m = Match {
+            participants: vec![p.clone()],
+            queue_id: 999,
+            game_duration: 60,
+            game_creation: 0,
+        };
+        match m.try_into_alert("p1").unwrap_err() {
+            AlertCreationError::UnsupportedQueueType { queue_id } => assert_eq!(queue_id, 999),
+            _ => panic!("unexpected error"),
+        }
+    }
+
+    #[test]
+    fn puuid_not_in_match_error() {
+        init_ddragon_version();
+        let p = sample_participant("p1", true, "TOP");
+        let m = Match {
+            participants: vec![p.clone()],
+            queue_id: 400,
+            game_duration: 60,
+            game_creation: 0,
+        };
+        match m.try_into_alert("other").unwrap_err() {
+            AlertCreationError::PuuidNotInMatch { puuid } => assert_eq!(puuid, "other"),
+            _ => panic!("unexpected error"),
+        }
+    }
+
+    #[test]
+    fn ranked_solo_duo_alert() {
+        init_ddragon_version();
+        let p = sample_participant("p1", true, "MIDDLE");
+        let base = Match {
+            participants: vec![p.clone()],
+            queue_id: 420,
+            game_duration: 120,
+            game_creation: 0,
+        };
+        let ranked = MatchRanked {
+            base,
+            current_league: league("RANKED_SOLO_5x5"),
+            cached_league: league("RANKED_SOLO_5x5"),
+        };
+        let embed = ranked.try_into_alert("p1").unwrap();
+        let data: Value = serde_json::to_value(&embed).unwrap();
+        assert_eq!(data["author"]["name"], "[LoL] Solo/Duo Queue");
+    }
+
+    #[test]
+    fn ranked_flex_alert() {
+        init_ddragon_version();
+        let p = sample_participant("p1", true, "TOP");
+        let base = Match {
+            participants: vec![p.clone()],
+            queue_id: 440,
+            game_duration: 120,
+            game_creation: 0,
+        };
+        let ranked = MatchRanked {
+            base,
+            current_league: league("RANKED_FLEX_SR"),
+            cached_league: league("RANKED_FLEX_SR"),
+        };
+        let embed = ranked.try_into_alert("p1").unwrap();
+        let data: Value = serde_json::to_value(&embed).unwrap();
+        assert_eq!(data["author"]["name"], "[LoL] Flex Queue");
+    }
+
+    #[test]
+    fn ranked_unsupported_queue() {
+        init_ddragon_version();
+        let p = sample_participant("p1", true, "MID");
+        let base = Match {
+            participants: vec![p.clone()],
+            queue_id: 999,
+            game_duration: 120,
+            game_creation: 0,
+        };
+        let ranked = MatchRanked {
+            base,
+            current_league: league("UNHANDLED"),
+            cached_league: league("UNHANDLED"),
+        };
+        match ranked.try_into_alert("p1").unwrap_err() {
+            AlertCreationError::UnsupportedQueueType { queue_id } => assert_eq!(queue_id, 999),
+            _ => panic!("unexpected error"),
+        }
+    }
+}

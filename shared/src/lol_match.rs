@@ -78,6 +78,7 @@ impl Match {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct MatchParticipant {
     pub puuid: String,
     pub champion_name: String,
