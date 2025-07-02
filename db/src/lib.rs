@@ -281,10 +281,12 @@ impl CachedLeagueSource for SharedDatabase {
             "SELECT points, rank, tier, wins, losses, queue_type FROM leagues WHERE puuid = ?1 AND queue_type = ?2",
             params![puuid, queue_type.as_str()],
             |row| {
+                let rank: Option<String> = row.get(1)?;
+                let tier: Option<String> = row.get(2)?;
                 Ok(League {
                     league_points: row.get(0)?,
-                    rank: row.get(1)?,
-                    tier: row.get(2)?,
+                    rank: rank.unwrap_or_default(),
+                    tier: tier.unwrap_or_default(),
                     wins: row.get(3)?,
                     losses: row.get(4)?,
                     queue_type: row.get(5)?
