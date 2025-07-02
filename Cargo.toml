@@ -1,8 +1,8 @@
 [package]
 name = "Tentrackule"
-version = "1.0.0"
+version = "1.2.0"
 authors = ["Loïs Lag <lois@snowcorp.fr>"]
-edition = "2021"
+edition = "2024"
 readme = "README.md"
 license = "MIT"
 
