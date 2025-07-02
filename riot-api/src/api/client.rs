@@ -142,7 +142,9 @@ mod tests {
     #[tokio::test]
     async fn request_propagates_reqwest_error() {
         dotenv().ok();
-        env::set_var("RIOT_API_KEY", "TEST_KEY");
+        unsafe {
+            env::set_var("RIOT_API_KEY", "TEST_KEY");
+        }
         let key = env::var("RIOT_API_KEY")
             .expect("A Riot API Key must be set in environment to create the API Client.");
         let client = ApiClientBase::new(key);
