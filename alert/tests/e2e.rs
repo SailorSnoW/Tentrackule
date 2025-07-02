@@ -155,7 +155,7 @@ async fn dispatch_lol_match_alert() {
     let m = Match {
         participants: vec![p.clone()],
         queue_id: 400,
-        game_duration: 90,
+        game_duration: 600,
         game_creation: 0,
     };
 
@@ -184,7 +184,7 @@ async fn dispatch_lol_ranked_alert() {
     let base = Match {
         participants: vec![p.clone()],
         queue_id: 420,
-        game_duration: 120,
+        game_duration: 600,
         game_creation: 0,
     };
     let ranked = MatchRanked {
@@ -218,7 +218,7 @@ async fn dispatch_lol_flex_ranked_alert() {
     let base = Match {
         participants: vec![p.clone()],
         queue_id: 440,
-        game_duration: 120,
+        game_duration: 600,
         game_creation: 0,
     };
     let ranked = MatchRanked {
@@ -233,6 +233,35 @@ async fn dispatch_lol_flex_ranked_alert() {
 #[tokio::test]
 #[ignore = "Requires Discord credentials"]
 async fn dispatch_lol_aram_alert() {
+    dotenv().ok();
+    init_ddragon_version();
+    let token = env::var("DISCORD_BOT_TOKEN").expect("DISCORD_BOT_TOKEN not set");
+    let channel_id: u64 = env::var("TEST_CHANNEL_ID")
+        .expect("TEST_CHANNEL_ID not set")
+        .parse()
+        .expect("invalid channel id");
+
+    let http = Arc::new(Http::new(&token));
+    let cache = TestCache {
+        channel: ChannelId::new(channel_id),
+    };
+
+    let dispatcher = AlertDispatcher::new(http, cache);
+
+    let p = sample_participant("p1", true, "UTILITY");
+    let m = Match {
+        participants: vec![p.clone()],
+        queue_id: 450,
+        game_duration: 600,
+        game_creation: 0,
+    };
+
+    dispatcher.dispatch_alert("p1", m).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires Discord credentials"]
+async fn dispatch_remake_game_alert() {
     dotenv().ok();
     init_ddragon_version();
     let token = env::var("DISCORD_BOT_TOKEN").expect("DISCORD_BOT_TOKEN not set");

@@ -58,8 +58,8 @@ fn base(
     let mut fields = Vec::new();
 
     let embed = CreateEmbed::new()
-        .title(focused_participant.to_title_win_string())
-        .color(focused_participant.to_win_colour())
+        .title(focused_participant.to_title_win_string(match_data.game_duration))
+        .color(focused_participant.to_win_colour(match_data.game_duration))
         .url(focused_participant.to_dpm_profile_url())
         .thumbnail(focused_participant.to_champion_picture_url())
         .footer(footer);
@@ -103,11 +103,11 @@ fn ranked_alert(focused_participant: &MatchParticipant, match_data: &MatchRanked
         .description(format!(
             "**{}** just {} a ranked game !",
             focused_participant.riot_id_game_name,
-            focused_participant.to_formatted_win_string(),
+            focused_participant.to_formatted_win_string(match_data.base.game_duration),
         ))
         .title(format!(
             "{}{}",
-            focused_participant.to_title_win_string(),
+            focused_participant.to_title_win_string(match_data.base.game_duration),
             match match_data.calculate_league_points_difference(focused_participant.win) {
                 Some(diff) => format!(" ({:+} LPs)", diff),
                 None => String::new(),
@@ -137,7 +137,7 @@ fn draft_normal_alert(focused_participant: &MatchParticipant, match_data: &Match
         .description(format!(
             "**{}** just {} a normal game !",
             focused_participant.riot_id_game_name,
-            focused_participant.to_formatted_win_string(),
+            focused_participant.to_formatted_win_string(match_data.game_duration),
         ))
 }
 
@@ -149,7 +149,7 @@ fn aram_alert(focused_participant: &MatchParticipant, match_data: &Match) -> Cre
         .description(format!(
             "**{}** just {} an ARAM game !",
             focused_participant.riot_id_game_name,
-            focused_participant.to_formatted_win_string(),
+            focused_participant.to_formatted_win_string(match_data.game_duration),
         ))
 }
 
@@ -196,7 +196,7 @@ mod tests {
         let m = Match {
             participants: vec![p.clone()],
             queue_id: 400,
-            game_duration: 90,
+            game_duration: 600,
             game_creation: 0,
         };
         let embed = m.try_into_alert("p1").unwrap();
@@ -217,7 +217,7 @@ mod tests {
         let m = Match {
             participants: vec![p.clone()],
             queue_id: 450,
-            game_duration: 60,
+            game_duration: 600,
             game_creation: 0,
         };
         let embed = m.try_into_alert("p1").unwrap();
@@ -237,7 +237,7 @@ mod tests {
         let m = Match {
             participants: vec![p.clone()],
             queue_id: 999,
-            game_duration: 60,
+            game_duration: 600,
             game_creation: 0,
         };
         match m.try_into_alert("p1").unwrap_err() {
@@ -253,7 +253,7 @@ mod tests {
         let m = Match {
             participants: vec![p.clone()],
             queue_id: 400,
-            game_duration: 60,
+            game_duration: 600,
             game_creation: 0,
         };
         match m.try_into_alert("other").unwrap_err() {
@@ -269,7 +269,7 @@ mod tests {
         let base = Match {
             participants: vec![p.clone()],
             queue_id: 420,
-            game_duration: 120,
+            game_duration: 600,
             game_creation: 0,
         };
         let ranked = MatchRanked {
@@ -289,7 +289,7 @@ mod tests {
         let base = Match {
             participants: vec![p.clone()],
             queue_id: 440,
-            game_duration: 120,
+            game_duration: 600,
             game_creation: 0,
         };
         let ranked = MatchRanked {
@@ -309,7 +309,7 @@ mod tests {
         let base = Match {
             participants: vec![p.clone()],
             queue_id: 999,
-            game_duration: 120,
+            game_duration: 600,
             game_creation: 0,
         };
         let ranked = MatchRanked {
@@ -321,5 +321,20 @@ mod tests {
             AlertCreationError::UnsupportedQueueType { queue_id } => assert_eq!(queue_id, 999),
             _ => panic!("unexpected error"),
         }
+    }
+
+    #[test]
+    fn remake_game_alert() {
+        let p = sample_participant("p1", true, "TOP");
+        let m = Match {
+            participants: vec![p.clone()],
+            queue_id: 400,
+            game_duration: 200,
+            game_creation: 0,
+        };
+
+        let embed = m.try_into_alert("p1").unwrap();
+        let data: Value = serde_json::to_value(&embed).unwrap();
+        assert_eq!(data["title"], "Remake");
     }
 }

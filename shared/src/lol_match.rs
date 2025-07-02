@@ -21,6 +21,8 @@ pub struct Match {
     pub game_creation: u128,
 }
 
+const MAX_REMAKE_TIME: u64 = 240;
+
 impl Match {
     pub fn participant(&self, puuid: &str) -> Option<&MatchParticipant> {
         self.participants.iter().find(|p| p.puuid == puuid)
@@ -132,20 +134,34 @@ impl MatchParticipant {
             encode(&self.riot_id_tagline)
         )
     }
-    pub fn to_title_win_string(&self) -> String {
+    pub fn to_title_win_string(&self, game_duration: u64) -> String {
+        if game_duration < MAX_REMAKE_TIME {
+            return "Remake".to_string();
+        }
+
         match self.win {
             true => "Victory".to_string(),
             false => "Defeat".to_string(),
         }
     }
-    pub fn to_formatted_win_string(&self) -> String {
+    pub fn to_formatted_win_string(&self, game_duration: u64) -> String {
+        // Remake
+        if game_duration < MAX_REMAKE_TIME {
+            return "remaked".to_string();
+        }
+
         match self.win {
             true => "won".to_string(),
             false => "lost".to_string(),
         }
     }
 
-    pub fn to_win_colour(&self) -> Colour {
+    pub fn to_win_colour(&self, game_duration: u64) -> Colour {
+        // Remake
+        if game_duration < 240 {
+            return Colour::from_rgb(128, 128, 128); // Grey
+        }
+
         match self.win {
             true => Colour::from_rgb(39, 98, 218),
             false => Colour::from_rgb(226, 54, 112),
