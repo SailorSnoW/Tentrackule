@@ -9,7 +9,7 @@ use poise::serenity_prelude::{self as serenity, ChannelId, CreateMessage};
 /// A way to send a message (likely containing an Alert for example)
 pub trait MessageSender: Send + Sync {
     async fn send_message(&self, channel_id: ChannelId, msg: CreateMessage)
-        -> serenity::Result<()>;
+    -> serenity::Result<()>;
 }
 
 #[async_trait]

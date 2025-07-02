@@ -3,9 +3,9 @@ use bytes::Bytes;
 use match_v5::MatchDto;
 use std::fmt::Debug;
 use tentrackule_shared::{
+    Account, League, Region,
     lol_match::Match,
     traits::api::{AccountApi, ApiError, ApiRequest, LeagueApi, LolApiFull, MatchApi},
-    Account, League, Region,
 };
 
 use crate::types::RiotApiError;

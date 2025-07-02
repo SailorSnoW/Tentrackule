@@ -4,7 +4,7 @@
 //! sent by the Discord bot when a tracked game finishes.
 
 use poise::serenity_prelude::CreateEmbed;
-use tentrackule_shared::{lol_match, QueueType};
+use tentrackule_shared::{QueueType, lol_match};
 use thiserror::Error;
 
 pub mod alert_dispatcher;

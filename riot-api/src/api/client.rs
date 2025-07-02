@@ -4,16 +4,16 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures::TryFutureExt;
 use governor::{
+    Quota, RateLimiter,
     clock::DefaultClock,
     state::{InMemoryState, NotKeyed},
-    Quota, RateLimiter,
 };
 use nonzero_ext::nonzero;
 use reqwest::StatusCode;
 use serde::Deserialize;
 use tentrackule_shared::{
-    traits::api::{AccountApi, ApiError, ApiRequest},
     Account, Region,
+    traits::api::{AccountApi, ApiError, ApiRequest},
 };
 
 use crate::types::RiotApiError;
@@ -151,12 +151,13 @@ mod tests {
 
         let res = client.request(bad_url).await;
 
-        assert!(res
-            .as_ref()
-            .err()
-            .and_then(|e| e.downcast_ref::<RiotApiError>())
-            .map(|e| matches!(e, RiotApiError::Reqwest(_)))
-            .unwrap_or(false));
+        assert!(
+            res.as_ref()
+                .err()
+                .and_then(|e| e.downcast_ref::<RiotApiError>())
+                .map(|e| matches!(e, RiotApiError::Reqwest(_)))
+                .unwrap_or(false)
+        );
     }
 
     #[test]

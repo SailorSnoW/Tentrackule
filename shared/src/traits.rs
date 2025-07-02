@@ -83,7 +83,7 @@ pub trait CachedAccountGuildSource {
 pub mod api {
     use bytes::Bytes;
 
-    use crate::{lol_match::Match, Region};
+    use crate::{Region, lol_match::Match};
 
     use super::*;
 
@@ -128,7 +128,7 @@ pub mod api {
     #[async_trait]
     pub trait LeagueApi: ApiRequest {
         async fn get_leagues(&self, puuid: String, region: Region)
-            -> Result<Vec<League>, ApiError>;
+        -> Result<Vec<League>, ApiError>;
     }
 
     #[async_trait]

@@ -5,13 +5,12 @@ use tracing::warn;
 use urlencoding::encode;
 
 use crate::{
-    ddragon_version,
+    Account, League, QueueType, ddragon_version,
     errors::RiotMatchError,
     traits::{
-        api::{LeagueApi, LeaguePoints, LeagueQueueType},
         CachedLeagueSource,
+        api::{LeagueApi, LeaguePoints, LeagueQueueType},
     },
-    Account, League, QueueType,
 };
 
 pub struct Match {

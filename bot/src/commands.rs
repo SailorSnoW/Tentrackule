@@ -4,7 +4,7 @@ use poise::serenity_prelude::ChannelType;
 use tentrackule_shared::{Account, QueueType, Region};
 use tracing::{debug, info};
 
-use super::{serenity, Context, Error};
+use super::{Context, Error, serenity};
 
 /// Error message shown when a command is used outside of a guild context.
 const GUILD_ONLY_ERR: &str = "❌ This command can only be used inside a guild.";

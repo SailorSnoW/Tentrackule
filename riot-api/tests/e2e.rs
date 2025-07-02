@@ -2,8 +2,8 @@ use std::env;
 
 use dotenv::dotenv;
 use tentrackule_riot_api::api::LolApiClient;
-use tentrackule_shared::traits::api::{AccountApi, LeagueApi, MatchApi};
 use tentrackule_shared::Region;
+use tentrackule_shared::traits::api::{AccountApi, LeagueApi, MatchApi};
 
 #[tokio::test]
 #[ignore = "API Key required"]

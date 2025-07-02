@@ -1,5 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 /// Simple counter used to log the amount of Riot API requests performed.
@@ -23,7 +23,7 @@ impl RequestMetrics {
 
     pub async fn log_loop(self: Arc<Self>) {
         let mut interval = tokio::time::interval(Duration::from_secs(60)); // Log per
-                                                                           // minutes
+        // minutes
         loop {
             interval.tick().await;
             let total = self.count.load(Ordering::Relaxed);

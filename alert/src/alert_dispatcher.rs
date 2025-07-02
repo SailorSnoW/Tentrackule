@@ -113,7 +113,7 @@ mod tests {
     use async_trait::async_trait;
     use poise::serenity_prelude::{self as serenity};
     use std::sync::{Arc, Mutex};
-    use tentrackule_shared::{traits::CachedSourceError, Account, QueueType};
+    use tentrackule_shared::{Account, QueueType, traits::CachedSourceError};
 
     struct DummySender {
         pub sent: Arc<Mutex<Vec<(ChannelId, String)>>>,

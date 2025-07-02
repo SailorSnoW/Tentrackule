@@ -9,7 +9,7 @@ use commands::{
 use poise::serenity_prelude as serenity;
 use serenity::*;
 use std::{env, fmt::Debug, sync::Arc};
-use tentrackule_shared::traits::{api::AccountApi, CacheFull};
+use tentrackule_shared::traits::{CacheFull, api::AccountApi};
 use tracing::{error, info};
 
 use handler::event_handler;

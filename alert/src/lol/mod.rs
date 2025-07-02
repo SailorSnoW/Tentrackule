@@ -2,9 +2,9 @@
 
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use tentrackule_shared::{
+    QueueType,
     lol_match::{Match, MatchParticipant, MatchRanked},
     traits::api::{LeaguePoints, LeagueRank},
-    QueueType,
 };
 
 use crate::{Alert, AlertCreationError, TryIntoAlert};
@@ -158,9 +158,8 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tentrackule_shared::{
-        init_ddragon_version,
+        League, init_ddragon_version,
         lol_match::{Match, MatchParticipant, MatchRanked},
-        League,
     };
 
     fn sample_participant(puuid: &str, win: bool, role: &str) -> MatchParticipant {
@@ -203,11 +202,13 @@ mod tests {
         let data: Value = serde_json::to_value(&embed).unwrap();
         assert_eq!(data["author"]["name"], "[LoL] Normal Draft");
         // Role field should be present
-        assert!(data["fields"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .any(|f| f["name"] == "Role"));
+        assert!(
+            data["fields"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|f| f["name"] == "Role")
+        );
     }
 
     #[test]
@@ -223,11 +224,13 @@ mod tests {
         let embed = m.try_into_alert("p1").unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
         assert_eq!(data["author"]["name"], "[LoL] ARAM");
-        assert!(data["fields"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .all(|f| f["name"] != "Role"));
+        assert!(
+            data["fields"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|f| f["name"] != "Role")
+        );
     }
 
     #[test]
