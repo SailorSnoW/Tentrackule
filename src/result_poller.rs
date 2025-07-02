@@ -1,6 +1,6 @@
 //! Periodically polls Riot servers for new match results and sends results to an alert dispatcher.
 
-use futures::{stream, StreamExt};
+use futures::{StreamExt, stream};
 use std::{
     env,
     sync::Arc,
@@ -9,9 +9,9 @@ use std::{
 use tentrackule_alert::AlertDispatch;
 use tentrackule_riot_api::api::LolApiClient;
 use tentrackule_shared::{
-    lol_match::Match,
-    traits::{api::LolApiFull, CachedAccountSource, CachedLeagueSource},
     Account, League, QueueType, Region,
+    lol_match::Match,
+    traits::{CachedAccountSource, CachedLeagueSource, api::LolApiFull},
 };
 use tracing::{debug, error, info};
 

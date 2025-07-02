@@ -8,8 +8,8 @@ use tracing_appender::{
     rolling::{RollingFileAppender, Rotation},
 };
 use tracing_subscriber::{
-    fmt::{fmt, time::ChronoLocal, writer::MakeWriterExt},
     EnvFilter,
+    fmt::{fmt, time::ChronoLocal, writer::MakeWriterExt},
 };
 
 /// Guard to ensure buffered logs are flushed on shutdown.
