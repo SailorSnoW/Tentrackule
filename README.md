@@ -22,20 +22,15 @@ caching useful information and only calling the API when required.
 
 ## 🏗 Architecture Overview
 
-Tentrackule is split into a few asynchronous tasks. These tasks share access to
-a `SharedDatabase` (`Arc<Mutex<Database>>`) and perform blocking queries via the
-`DatabaseExt::run` helper:
+Tentrackule is organized as a Cargo workspace made of several crates:
 
-1. **Discord Bot** – exposes slash commands via Poise and sends alerts to your
-   server.
-2. **Database** – wraps an SQLite database for storing tracked accounts
-   and guild settings.
-3. **Riot API** – performs requests to Riot while respecting rate limits
-   and collects simple metrics.
-4. **Result Poller** – periodically checks for new matches and dispatches alerts
-   when a tracked player finishes a game.
+- **bot** – Discord integration with slash commands via Poise.
+- **db** – asynchronous wrapper around SQLite storing tracked accounts and guild settings.
+- **riot-api** – typed Riot Games API client with rate limit handling and metrics logging.
+- **alert** – utilities to build and dispatch Discord embeds.
+- **shared** – common types and traits shared across the workspace.
 
-Each component runs in its own Tokio task and failures are logged.
+The main crate spawns the Discord bot and a polling task that regularly checks Riot for new matches. Each component runs in its own Tokio task and failures are logged.
 
 ## 📥 Installation and Execution
 
@@ -86,14 +81,14 @@ Each component runs in its own Tokio task and failures are logged.
 ### Available Commands
 
 The bot exposes several slash commands once invited to your guild:
-
-| Command                        | Description                                    |
-| ------------------------------ | ---------------------------------------------- |
-| `/track <name> <tag> <region>` | Start tracking a player                        |
-| `/untrack <name> <tag>`        | Stop tracking a player in the current server   |
-| `/show_tracked`                | List all tracked players in this server        |
-| `/set_alert_channel <channel>` | Choose where alerts should be posted           |
-| `/current_alert_channel`       | Display the currently configured alert channel |
+| Command | Description |
+| ------- | ----------- |
+| `/track <name> <tag> <region>` | Start tracking a player. |
+| `/untrack <name> <tag>` | Stop tracking a player in the current server. |
+| `/show_tracked` | List all tracked players in this server. |
+| `/set_alert_channel <channel>` | Choose where alerts should be posted. |
+| `/set_queue_alert <queue> <enabled>` | Enable or disable alerts for a specific queue. |
+| `/current_alert_channel` | Display the currently configured alert channel. |
 
 ## 🛠 Contribution
 
