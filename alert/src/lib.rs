@@ -4,12 +4,13 @@
 //! sent by the Discord bot when a tracked game finishes.
 
 use poise::serenity_prelude::CreateEmbed;
-use tentrackule_shared::{QueueType, lol_match};
+use tentrackule_shared::{lol_match, tft_match, traits::QueueKind};
 use thiserror::Error;
 
 pub mod alert_dispatcher;
 pub mod lol;
 pub mod message_sender;
+pub mod tft;
 
 pub use alert_dispatcher::{AlertDispatch, AlertDispatcher};
 pub use message_sender::MessageSender;
@@ -33,18 +34,24 @@ pub trait TryIntoAlert {
 }
 
 /// Types that expose the queue type associated with them.
-pub trait QueueTyped {
-    fn queue_type(&self) -> QueueType;
+pub trait QueueTyped<T: ToString + QueueKind + Send + Sync> {
+    fn queue_type(&self) -> T;
 }
 
-impl QueueTyped for lol_match::Match {
-    fn queue_type(&self) -> QueueType {
+impl QueueTyped<lol_match::QueueType> for lol_match::Match {
+    fn queue_type(&self) -> lol_match::QueueType {
         tentrackule_shared::lol_match::Match::queue_type(self)
     }
 }
 
-impl QueueTyped for lol_match::MatchRanked {
-    fn queue_type(&self) -> QueueType {
+impl QueueTyped<lol_match::QueueType> for lol_match::MatchRanked {
+    fn queue_type(&self) -> lol_match::QueueType {
         self.base.queue_type()
+    }
+}
+
+impl QueueTyped<tft_match::QueueType> for tft_match::Match {
+    fn queue_type(&self) -> tft_match::QueueType {
+        self.queue_type()
     }
 }

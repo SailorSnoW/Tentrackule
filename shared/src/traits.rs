@@ -3,16 +3,20 @@ use poise::serenity_prelude::{ChannelId, GuildId};
 use std::fmt::Debug;
 use std::{collections::HashMap, error::Error as ErrorT};
 
-use crate::{Account, League, QueueType};
+use crate::{Account, League, UnifiedQueueType};
 
 pub type CachedSourceError = Box<dyn ErrorT + Send + Sync>;
+
+pub trait QueueKind: ToString + Send + Sync {
+    fn to_unified(&self) -> UnifiedQueueType;
+}
 
 #[async_trait]
 pub trait CachedLeagueSource {
     async fn get_league_for(
         &self,
         puuid: String,
-        queue_type: QueueType,
+        queue_type: &dyn QueueKind,
     ) -> Result<Option<League>, CachedSourceError>;
 
     async fn set_league_for(&self, puuid: String, league: League) -> Result<(), CachedSourceError>;
@@ -33,14 +37,14 @@ pub trait CachedSettingSource {
     async fn set_queue_alert_enabled(
         &self,
         guild_id: GuildId,
-        queue_type: QueueType,
+        queue_type: &dyn QueueKind,
         enabled: bool,
     ) -> Result<(), CachedSourceError>;
 
     async fn is_queue_alert_enabled(
         &self,
         guild_id: GuildId,
-        queue_type: QueueType,
+        queue_type: &dyn QueueKind,
     ) -> Result<bool, CachedSourceError>;
 }
 
@@ -123,7 +127,7 @@ pub mod api {
         ) -> Result<Account, ApiError>;
     }
 
-    pub trait LolApiFull: LeagueApi + MatchApi + AccountApi {}
+    pub trait LolApiFull: LeagueApi + MatchApi<Match> + AccountApi {}
 
     #[async_trait]
     pub trait LeagueApi: ApiRequest {
@@ -132,13 +136,13 @@ pub mod api {
     }
 
     #[async_trait]
-    pub trait MatchApi: ApiRequest {
+    pub trait MatchApi<T>: ApiRequest {
         async fn get_last_match_id(
             &self,
             puuid: String,
             region: Region,
         ) -> Result<Option<String>, ApiError>;
 
-        async fn get_match(&self, match_id: String, region: Region) -> Result<Match, ApiError>;
+        async fn get_match(&self, match_id: String, region: Region) -> Result<T, ApiError>;
     }
 }

@@ -54,7 +54,8 @@ The main crate spawns the Discord bot and a polling task that regularly checks R
    DB_PATH=path_to_the_db_storage_writting
 
    DISCORD_BOT_TOKEN=your_discord_bot_token
-   RIOT_API_KEY=your_riot_api_key
+   LOL_API_KEY=your_riot_api_key
+   TFT_API_KEY=your_riot_api_key
 
    # Optional: configure log verbosity (error, warn, info, debug, trace)
    RUST_LOG=info

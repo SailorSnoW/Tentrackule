@@ -1,17 +1,64 @@
-use std::sync::Arc;
+use std::{
+    fmt::{self, Display},
+    sync::Arc,
+};
 
 use poise::serenity_prelude::Colour;
 use tracing::warn;
 use urlencoding::encode;
 
 use crate::{
-    Account, League, QueueType, ddragon_version,
+    Account, League, UnifiedQueueType, ddragon_version,
     errors::RiotMatchError,
     traits::{
-        CachedLeagueSource,
+        CachedLeagueSource, QueueKind,
         api::{LeagueApi, LeaguePoints, LeagueQueueType},
     },
 };
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum QueueType {
+    /// Ranked Solo/Duo
+    SoloDuo,
+    /// Ranked Flex
+    Flex,
+    /// 5v5 Normal Draft Picks
+    NormalDraft,
+    /// 5v5 Howling Abyss ARAM
+    Aram,
+    Unhandled,
+}
+
+impl From<u16> for QueueType {
+    fn from(value: u16) -> Self {
+        match value {
+            400 => Self::NormalDraft,
+            420 => Self::SoloDuo,
+            440 => Self::Flex,
+            450 => Self::Aram,
+            _ => Self::Unhandled,
+        }
+    }
+}
+
+impl Display for QueueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            QueueType::SoloDuo => "RANKED_SOLO_5x5",
+            QueueType::Flex => "RANKED_FLEX_SR",
+            QueueType::NormalDraft => "",
+            QueueType::Aram => "",
+            QueueType::Unhandled => "UNHANDLED",
+        };
+
+        write!(f, "{}", name)
+    }
+}
+impl QueueKind for QueueType {
+    fn to_unified(&self) -> UnifiedQueueType {
+        UnifiedQueueType::Lol(*self)
+    }
+}
 
 pub struct Match {
     pub participants: Vec<MatchParticipant>,
@@ -52,7 +99,7 @@ impl Match {
     {
         let queue_type: QueueType = self.queue_id.into();
         let maybe_cached_league = cache
-            .get_league_for(ranking_of.puuid.clone(), queue_type)
+            .get_league_for(ranking_of.puuid.clone(), &queue_type)
             .await
             .map_err(|e| RiotMatchError::CantRetrieveCachedLeague(e))?;
 
@@ -69,9 +116,9 @@ impl Match {
             .map_err(|e| RiotMatchError::RiotApiError(e))?;
         let current_league = current_leagues
             .into_iter()
-            .find(|league| league.queue_type().eq(queue_type.as_str()))
+            .find(|league| league.queue_type().eq(&queue_type.to_string()))
             .ok_or(RiotMatchError::NoApiLeagueFound(
-                queue_type.as_str().to_string(),
+                queue_type.to_string(),
                 ranking_of.puuid.clone(),
             ))?;
 
@@ -157,7 +204,7 @@ impl MatchParticipant {
 
     pub fn to_win_colour(&self, game_duration: u64) -> Colour {
         // Remake
-        if game_duration < 240 {
+        if game_duration < MAX_REMAKE_TIME {
             return Colour::from_rgb(128, 128, 128); // Grey
         }
 

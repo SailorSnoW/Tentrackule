@@ -1,11 +1,19 @@
-use std::{env, sync::LazyLock};
+use std::{
+    env,
+    fmt::{self, Display},
+    sync::LazyLock,
+};
 
 use serde::Deserialize;
 use tracing::info;
-use traits::api::{LeaguePoints, LeagueQueueType, LeagueRank};
+use traits::{
+    QueueKind,
+    api::{LeaguePoints, LeagueQueueType, LeagueRank},
+};
 
 pub mod errors;
 pub mod lol_match;
+pub mod tft_match;
 pub mod traits;
 
 /// Loaded once at startup to avoid repeated environment lookups.
@@ -115,39 +123,25 @@ impl TryFrom<String> for Region {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum QueueType {
-    /// Ranked Solo/Duo
-    SoloDuo,
-    /// Ranked Flex
-    Flex,
-    /// 5v5 Normal Draft Picks
-    NormalDraft,
-    /// 5v5 Howling Abyss ARAM
-    Aram,
-    Unhandled,
+pub enum UnifiedQueueType {
+    Lol(lol_match::QueueType),
+    Tft(tft_match::QueueType),
 }
 
-impl From<u16> for QueueType {
-    fn from(value: u16) -> Self {
-        match value {
-            400 => Self::NormalDraft,
-            420 => Self::SoloDuo,
-            440 => Self::Flex,
-            450 => Self::Aram,
-            _ => Self::Unhandled,
-        }
+impl Display for UnifiedQueueType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let name = match self {
+            Self::Lol(x) => x.to_string(),
+            Self::Tft(x) => x.to_string(),
+        };
+
+        write!(f, "{}", name)
     }
 }
 
-impl QueueType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            QueueType::SoloDuo => "RANKED_SOLO_5x5",
-            QueueType::Flex => "RANKED_FLEX_SR",
-            QueueType::NormalDraft => "", // No league queue type
-            QueueType::Aram => "",        // No league queue type
-            QueueType::Unhandled => "UNHANDLED",
-        }
+impl QueueKind for UnifiedQueueType {
+    fn to_unified(&self) -> UnifiedQueueType {
+        *self
     }
 }
 
@@ -208,10 +202,13 @@ mod tests {
 
     #[test]
     fn queue_type_and_region_conversions() {
-        let q = QueueType::from(420u16);
-        assert!(matches!(q, QueueType::SoloDuo));
-        assert_eq!(q.as_str(), "RANKED_SOLO_5x5");
-        assert!(matches!(QueueType::from(999u16), QueueType::Unhandled));
+        let q = lol_match::QueueType::from(420u16);
+        assert!(matches!(q, lol_match::QueueType::SoloDuo));
+        assert_eq!(q.to_string(), "RANKED_SOLO_5x5");
+        assert!(matches!(
+            lol_match::QueueType::from(999u16),
+            lol_match::QueueType::Unhandled
+        ));
 
         assert_eq!(Region::Euw.to_endpoint(), "euw1.api.riotgames.com");
         assert_eq!(

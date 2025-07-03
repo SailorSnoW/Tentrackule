@@ -7,10 +7,10 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tentrackule_alert::AlertDispatch;
-use tentrackule_riot_api::api::LolApiClient;
+use tentrackule_riot_api::api::lol::LolApiClient;
 use tentrackule_shared::{
-    Account, League, QueueType, Region,
-    lol_match::Match,
+    Account, League, Region,
+    lol_match::{self, Match},
     traits::{CachedAccountSource, CachedLeagueSource, api::LolApiFull},
 };
 use tracing::{debug, error, info};
@@ -125,7 +125,7 @@ where
 
     async fn dispatch_alert_if_needed(&self, account: Account, match_data: Match) {
         match match_data.queue_type() {
-            QueueType::SoloDuo | QueueType::Flex => {
+            lol_match::QueueType::SoloDuo | lol_match::QueueType::Flex => {
                 let match_ranked = match match_data
                     .try_into_match_ranked::<LolApiClient, C>(
                         &account,
@@ -159,7 +159,7 @@ where
                     .dispatch_alert(&account.puuid, match_ranked)
                     .await;
             }
-            QueueType::NormalDraft | QueueType::Aram => {
+            lol_match::QueueType::NormalDraft | lol_match::QueueType::Aram => {
                 debug!(
                     "dispatching alert for {}#{}",
                     account.game_name, account.tag_line
@@ -168,7 +168,7 @@ where
                     .dispatch_alert(&account.puuid, match_data)
                     .await;
             }
-            QueueType::Unhandled => {
+            lol_match::QueueType::Unhandled => {
                 debug!(
                     "{}#{} unsupported queue ID: {}",
                     account.game_name, account.tag_line, match_data.queue_id

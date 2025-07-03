@@ -4,7 +4,7 @@ use super::TryIntoAlert;
 use async_trait::async_trait;
 use message_sender::MessageSender;
 use poise::serenity_prelude::{ChannelId, CreateMessage, GuildId, Http};
-use tentrackule_shared::traits::{CachedAccountGuildSource, CachedSettingSource};
+use tentrackule_shared::traits::{CachedAccountGuildSource, CachedSettingSource, QueueKind};
 use tracing::{error, warn};
 
 use super::*;
@@ -12,15 +12,17 @@ use super::*;
 /// Abstraction for dispatching alert messages to Discord.
 #[async_trait]
 pub trait AlertDispatch {
-    async fn dispatch_alert<T>(&self, puuid: &str, match_data: T)
+    async fn dispatch_alert<T, U>(&self, puuid: &str, match_data: T)
     where
-        T: TryIntoAlert + QueueTyped + Send + Sync;
+        T: TryIntoAlert + QueueTyped<U> + Send + Sync,
+        U: QueueKind;
 }
 
 /// An AlertDispatcher which use a discord Http client to send alerts.
 pub type DiscordAlertDispatcher<Cache> = AlertDispatcher<Arc<Http>, Cache>;
 
 /// Implementation of [`AlertDispatch`] using a [`MessageSender`] and the database.
+#[derive(Debug, Clone, Copy)]
 pub struct AlertDispatcher<S, C> {
     sender: S,
     db: C,
@@ -54,9 +56,10 @@ where
     S: MessageSender,
     C: CachedAccountGuildSource + CachedSettingSource + Send + Sync,
 {
-    async fn dispatch_alert<T>(&self, puuid: &str, match_data: T)
+    async fn dispatch_alert<T, U>(&self, puuid: &str, match_data: T)
     where
-        T: TryIntoAlert + QueueTyped + Send + Sync,
+        T: TryIntoAlert + QueueTyped<U> + Send + Sync,
+        U: QueueKind,
     {
         let alert = match match_data.try_into_alert(puuid) {
             Ok(alert) => alert,
@@ -76,7 +79,7 @@ where
             let maybe_channel_id = guild.1;
 
             // Enabled or disabled alert for the match queue type check
-            let enabled = match self.db.is_queue_alert_enabled(guild.0, queue_type).await {
+            let enabled = match self.db.is_queue_alert_enabled(guild.0, &queue_type).await {
                 Ok(v) => v,
                 Err(e) => {
                     error!("DB error while checking queue alert setting: {}", e);
@@ -113,7 +116,10 @@ mod tests {
     use async_trait::async_trait;
     use poise::serenity_prelude::{self as serenity};
     use std::sync::{Arc, Mutex};
-    use tentrackule_shared::{Account, QueueType, traits::CachedSourceError};
+    use tentrackule_shared::{
+        Account, UnifiedQueueType,
+        traits::{CachedSourceError, QueueKind},
+    };
 
     struct DummySender {
         pub sent: Arc<Mutex<Vec<(ChannelId, String)>>>,
@@ -160,7 +166,7 @@ mod tests {
         async fn set_queue_alert_enabled(
             &self,
             _guild_id: GuildId,
-            _queue_type: QueueType,
+            _queue_type: &dyn QueueKind,
             _enabled: bool,
         ) -> Result<(), CachedSourceError> {
             Ok(())
@@ -169,7 +175,7 @@ mod tests {
         async fn is_queue_alert_enabled(
             &self,
             _guild_id: GuildId,
-            _queue_type: QueueType,
+            _queue_type: &dyn QueueKind,
         ) -> Result<bool, CachedSourceError> {
             Ok(true)
         }
@@ -194,7 +200,7 @@ mod tests {
 
     struct DummyCacheWithQueues {
         pub guilds: HashMap<GuildId, Option<ChannelId>>,
-        pub enabled: HashMap<(GuildId, QueueType), bool>,
+        pub enabled: HashMap<(GuildId, UnifiedQueueType), bool>,
     }
 
     #[async_trait]
@@ -234,7 +240,7 @@ mod tests {
         async fn set_queue_alert_enabled(
             &self,
             _guild_id: GuildId,
-            _queue_type: QueueType,
+            _queue_type: &dyn QueueKind,
             _enabled: bool,
         ) -> Result<(), CachedSourceError> {
             Ok(())
@@ -243,9 +249,12 @@ mod tests {
         async fn is_queue_alert_enabled(
             &self,
             guild_id: GuildId,
-            queue_type: QueueType,
+            queue_type: &dyn QueueKind,
         ) -> Result<bool, CachedSourceError> {
-            Ok(*self.enabled.get(&(guild_id, queue_type)).unwrap_or(&true))
+            Ok(*self
+                .enabled
+                .get(&(guild_id, queue_type.to_unified()))
+                .unwrap_or(&true))
         }
     }
 
@@ -258,9 +267,16 @@ mod tests {
         let guilds = [(GuildId::new(1), Some(ChannelId::new(10)))]
             .into_iter()
             .collect();
-        let enabled = [((GuildId::new(1), QueueType::NormalDraft), false)]
-            .into_iter()
-            .collect();
+
+        let enabled: HashMap<(GuildId, UnifiedQueueType), bool> = [(
+            (
+                GuildId::new(1),
+                lol_match::QueueType::NormalDraft.to_unified(),
+            ),
+            false,
+        )]
+        .into_iter()
+        .collect();
         let cache = DummyCacheWithQueues { guilds, enabled };
         let dispatcher = AlertDispatcher::new(sender, cache);
 
@@ -282,8 +298,20 @@ mod tests {
         .into_iter()
         .collect();
         let enabled = [
-            ((GuildId::new(1), QueueType::NormalDraft), true),
-            ((GuildId::new(2), QueueType::NormalDraft), false),
+            (
+                (
+                    GuildId::new(1),
+                    lol_match::QueueType::NormalDraft.to_unified(),
+                ),
+                true,
+            ),
+            (
+                (
+                    GuildId::new(2),
+                    lol_match::QueueType::NormalDraft.to_unified(),
+                ),
+                false,
+            ),
         ]
         .into_iter()
         .collect();
@@ -303,9 +331,9 @@ mod tests {
             Ok(CreateEmbed::new().description("test"))
         }
     }
-    impl QueueTyped for DummyAlert {
-        fn queue_type(&self) -> QueueType {
-            QueueType::NormalDraft
+    impl QueueTyped<lol_match::QueueType> for DummyAlert {
+        fn queue_type(&self) -> lol_match::QueueType {
+            lol_match::QueueType::NormalDraft
         }
     }
 
@@ -315,9 +343,9 @@ mod tests {
             Err(AlertCreationError::PuuidNotInMatch { puuid: "x".into() })
         }
     }
-    impl QueueTyped for FailingAlert {
-        fn queue_type(&self) -> QueueType {
-            QueueType::NormalDraft
+    impl QueueTyped<lol_match::QueueType> for FailingAlert {
+        fn queue_type(&self) -> lol_match::QueueType {
+            lol_match::QueueType::NormalDraft
         }
     }
 

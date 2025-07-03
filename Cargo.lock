@@ -11,6 +11,7 @@ dependencies = [
  "tentrackule-alert",
  "tentrackule-bot",
  "tentrackule-db",
+ "tentrackule-result-poller",
  "tentrackule-riot-api",
  "tentrackule-shared",
  "tokio",
@@ -2798,6 +2799,21 @@ dependencies = [
  "poise",
  "rusqlite",
  "tentrackule-shared",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "tentrackule-result-poller"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "futures",
+ "tentrackule-alert",
+ "tentrackule-db",
+ "tentrackule-riot-api",
+ "tentrackule-shared",
+ "thiserror 2.0.12",
  "tokio",
  "tracing",
 ]

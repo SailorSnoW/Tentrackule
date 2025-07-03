@@ -2,8 +2,7 @@
 
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use tentrackule_shared::{
-    QueueType,
-    lol_match::{Match, MatchParticipant, MatchRanked},
+    lol_match::{Match, MatchParticipant, MatchRanked, QueueType},
     traits::api::{LeaguePoints, LeagueRank},
 };
 

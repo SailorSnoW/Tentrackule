@@ -1,7 +1,7 @@
 //! Slash command implementations used by the Discord bot.
 
 use poise::serenity_prelude::ChannelType;
-use tentrackule_shared::{Account, QueueType, Region};
+use tentrackule_shared::{Account, Region, UnifiedQueueType, lol_match};
 use tracing::{debug, info};
 
 use super::{Context, Error, serenity};
@@ -21,13 +21,13 @@ pub enum QueueAlertType {
     Aram,
 }
 
-impl From<QueueAlertType> for QueueType {
+impl From<QueueAlertType> for UnifiedQueueType {
     fn from(q: QueueAlertType) -> Self {
         match q {
-            QueueAlertType::SoloDuo => QueueType::SoloDuo,
-            QueueAlertType::Flex => QueueType::Flex,
-            QueueAlertType::NormalDraft => QueueType::NormalDraft,
-            QueueAlertType::Aram => QueueType::Aram,
+            QueueAlertType::SoloDuo => Self::Lol(lol_match::QueueType::SoloDuo),
+            QueueAlertType::Flex => Self::Lol(lol_match::QueueType::Flex),
+            QueueAlertType::NormalDraft => Self::Lol(lol_match::QueueType::NormalDraft),
+            QueueAlertType::Aram => Self::Lol(lol_match::QueueType::Aram),
         }
     }
 }
@@ -207,10 +207,12 @@ pub async fn set_queue_alert(
         return Ok(());
     };
 
+    let unified: UnifiedQueueType = queue.into();
+
     if let Err(e) = ctx
         .data()
         .db
-        .set_queue_alert_enabled(guild_id, queue.into(), enabled)
+        .set_queue_alert_enabled(guild_id, &unified, enabled)
         .await
     {
         tracing::error!("DB error while setting queue alert: {}", e);

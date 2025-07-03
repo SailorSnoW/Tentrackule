@@ -10,10 +10,10 @@ use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{Connection, OptionalExtension, params};
 use tentrackule_shared::{
-    Account, League, QueueType,
+    Account, League,
     traits::{
         CacheFull, CachedAccountGuildSource, CachedAccountSource, CachedLeagueSource,
-        CachedSettingSource, CachedSourceError,
+        CachedSettingSource, CachedSourceError, QueueKind,
     },
 };
 use tokio::sync::{Mutex, OnceCell};
@@ -70,7 +70,7 @@ impl CachedSettingSource for SharedDatabase {
     async fn set_queue_alert_enabled(
         &self,
         guild_id: GuildId,
-        queue_type: QueueType,
+        queue_type: &dyn QueueKind,
         enabled: bool,
     ) -> Result<(), CachedSourceError> {
         let guild_id_u64: u64 = guild_id.into();
@@ -80,7 +80,7 @@ impl CachedSettingSource for SharedDatabase {
 
         db.execute(
             "INSERT OR REPLACE INTO queue_alert_settings (guild_id, queue_type, enabled) VALUES (?1, ?2, ?3)",
-            params![guild_id_u64, queue_type.as_str(), enabled_i64],
+            params![guild_id_u64, queue_type.to_string(), enabled_i64],
         )?;
         Ok(())
     }
@@ -88,7 +88,7 @@ impl CachedSettingSource for SharedDatabase {
     async fn is_queue_alert_enabled(
         &self,
         guild_id: GuildId,
-        queue_type: QueueType,
+        queue_type: &dyn QueueKind,
     ) -> Result<bool, CachedSourceError> {
         let guild_id_u64: u64 = guild_id.into();
 
@@ -97,7 +97,7 @@ impl CachedSettingSource for SharedDatabase {
         let maybe_enabled: Option<i64> = db
             .query_row(
                 "SELECT enabled FROM queue_alert_settings WHERE guild_id = ?1 AND queue_type = ?2",
-                params![guild_id_u64, queue_type.as_str()],
+                params![guild_id_u64, queue_type.to_string()],
                 |row| row.get(0),
             )
             .optional()?;
@@ -273,13 +273,13 @@ impl CachedLeagueSource for SharedDatabase {
     async fn get_league_for(
         &self,
         puuid: String,
-        queue_type: QueueType,
+        queue_type: &dyn QueueKind,
     ) -> Result<Option<League>, Box<dyn Error + Send + Sync>> {
         let db = self.conn.lock().await;
 
         db.query_row(
             "SELECT points, rank, tier, wins, losses, queue_type FROM leagues WHERE puuid = ?1 AND queue_type = ?2",
-            params![puuid, queue_type.as_str()],
+            params![puuid, queue_type.to_string()],
             |row| {
                 let rank: Option<String> = row.get(1)?;
                 let tier: Option<String> = row.get(2)?;

@@ -10,7 +10,8 @@ use result_poller::ResultPoller;
 use tentrackule_alert::alert_dispatcher::DiscordAlertDispatcher;
 use tentrackule_bot::DiscordBot;
 use tentrackule_db::SharedDatabase;
-use tentrackule_riot_api::api::LolApiClient;
+use tentrackule_result_poller::tft::TftResultPoller;
+use tentrackule_riot_api::api::{lol::LolApiClient, tft::TftApiClient};
 use tentrackule_shared::init_ddragon_version;
 use tracing::{error, info};
 
@@ -28,15 +29,18 @@ async fn main() {
     let db = SharedDatabase::new_from_env().unwrap();
     db.init().await;
 
-    let lol_api: Arc<LolApiClient> = LolApiClient::new(get_api_key_from_env()).into();
+    let lol_api: Arc<LolApiClient> = LolApiClient::new(get_lol_api_key_from_env()).into();
+    let tft_client = Arc::new(TftApiClient::new(get_tft_api_key_from_env()));
 
     let bot = DiscordBot::new(Arc::new(db.clone()), lol_api.clone()).await;
     let alert_dispatcher: DiscordAlertDispatcher<SharedDatabase> =
         DiscordAlertDispatcher::new(bot.client().http.clone(), db.clone());
 
-    let result_poller = ResultPoller::new(lol_api.clone(), db, alert_dispatcher);
+    let result_poller = ResultPoller::new(lol_api.clone(), db.clone(), alert_dispatcher.clone());
+    let tft_result_poller = TftResultPoller::new(tft_client.clone(), db, alert_dispatcher);
 
     lol_api.start_metrics_logging();
+    tft_client.start_metrics_logging();
 
     tokio::select! {
         res = bot.start() => {
@@ -54,9 +58,18 @@ async fn main() {
         },
         res = result_poller.start() => {
             match res {
-                Ok(()) => info!("The result poller exited gracefully."),
+                Ok(()) => info!("The LoL result poller exited gracefully."),
                 Err(e) => {
-                    error!("The result poller crashed: {:?}", e);
+                    error!("The LoL result poller crashed: {:?}", e);
+                    return;
+                },
+            }
+        },
+        res = tft_result_poller.start() => {
+            match res {
+                Ok(()) => info!("The TFT result poller exited gracefully."),
+                Err(e) => {
+                    error!("The TFT result poller crashed: {:?}", e);
                     return;
                 },
             }
@@ -64,7 +77,12 @@ async fn main() {
     }
 }
 
-fn get_api_key_from_env() -> String {
-    env::var("RIOT_API_KEY")
-        .expect("A Riot API Key must be set in environment to create the API Client.")
+fn get_lol_api_key_from_env() -> String {
+    env::var("LOL_API_KEY")
+        .expect("A LoL Riot API Key must be set in environment to create the API Client.")
+}
+
+fn get_tft_api_key_from_env() -> String {
+    env::var("TFT_API_KEY")
+        .expect("A TFT Riot API Key must be set in environment to create the API Client.")
 }

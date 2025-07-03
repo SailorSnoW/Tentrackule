@@ -127,7 +127,7 @@ impl From<AccountDto> for Account {
 #[cfg(test)]
 mod tests {
     use crate::{
-        api::{metrics::RequestMetrics, types::AccountDto},
+        api::{client::AccountDto, metrics::RequestMetrics},
         types::RiotApiError,
     };
 
@@ -143,10 +143,10 @@ mod tests {
     async fn request_propagates_reqwest_error() {
         dotenv().ok();
         unsafe {
-            env::set_var("RIOT_API_KEY", "TEST_KEY");
+            env::set_var("LOL_API_KEY", "TEST_KEY");
         }
-        let key = env::var("RIOT_API_KEY")
-            .expect("A Riot API Key must be set in environment to create the API Client.");
+        let key = env::var("LOL_API_KEY")
+            .expect("A LoL Riot API Key must be set in environment to create the API Client.");
         let client = ApiClientBase::new(key);
 
         let bad_url = "ht!tp://invalid-url".to_string(); // incorrect schema
