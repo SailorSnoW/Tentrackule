@@ -19,6 +19,7 @@ use tentrackule_shared::{
 };
 use tracing::{debug, error, info, warn};
 
+pub mod lol;
 pub mod tft;
 
 #[derive(Debug, Error)]

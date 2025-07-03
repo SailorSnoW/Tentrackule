@@ -6,17 +6,15 @@
 use std::{env, sync::Arc};
 
 use dotenv::dotenv;
-use result_poller::ResultPoller;
 use tentrackule_alert::alert_dispatcher::DiscordAlertDispatcher;
 use tentrackule_bot::{ApiClients, DiscordBot};
 use tentrackule_db::SharedDatabase;
-use tentrackule_result_poller::tft::TftResultPoller;
+use tentrackule_result_poller::{lol::LolResultPoller, tft::TftResultPoller};
 use tentrackule_riot_api::api::{lol::LolApiClient, tft::TftApiClient};
 use tentrackule_shared::init_ddragon_version;
 use tracing::{error, info};
 
 mod logging;
-mod result_poller;
 
 #[tokio::main]
 async fn main() {
@@ -40,7 +38,8 @@ async fn main() {
     let alert_dispatcher: DiscordAlertDispatcher<SharedDatabase> =
         DiscordAlertDispatcher::new(bot.client().http.clone(), db.clone());
 
-    let result_poller = ResultPoller::new(lol_client.clone(), db.clone(), alert_dispatcher.clone());
+    let lol_result_poller =
+        LolResultPoller::new(lol_client.clone(), db.clone(), alert_dispatcher.clone());
     let tft_result_poller = TftResultPoller::new(tft_client.clone(), db, alert_dispatcher);
 
     lol_client.start_metrics_logging();
@@ -60,7 +59,7 @@ async fn main() {
                 },
             }
         },
-        res = result_poller.start() => {
+        res = lol_result_poller.start() => {
             match res {
                 Ok(()) => info!("The LoL result poller exited gracefully."),
                 Err(e) => {
