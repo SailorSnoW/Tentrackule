@@ -10,6 +10,8 @@ mod v4;
 pub use v4::V4;
 mod v5;
 pub use v5::V5;
+mod v6;
+pub use v6::V6;
 
 pub trait DbMigration {
     fn do_migration(conn: &Connection);

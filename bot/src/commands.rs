@@ -62,18 +62,30 @@ pub async fn track(
         return Ok(());
     };
 
-    debug!("[CMD] fetching PUUID for {}#{}", game_name, tag);
-
-    let api_account_data = ctx
-        .data()
-        .account_api
-        .get_account_by_riot_id(game_name.clone(), tag.clone())
-        .await?;
+    debug!("[CMD] fetching LoL client PUUID for {}#{}", game_name, tag);
+    let puuid_lol = if let Some(lol_client) = ctx.data().account_apis.lol.clone() {
+        lol_client
+            .get_account_by_riot_id(game_name.clone(), tag.clone())
+            .await?
+            .puuid
+    } else {
+        String::new()
+    };
+    debug!("[CMD] fetching TFT client PUUID for {}#{}", game_name, tag);
+    let puuid_tft = if let Some(tft_client) = ctx.data().account_apis.tft.clone() {
+        tft_client
+            .get_account_by_riot_id(game_name.clone(), tag.clone())
+            .await?
+            .puuid
+    } else {
+        String::new()
+    };
 
     let cached_account = Account {
-        puuid: api_account_data.puuid,
-        game_name: api_account_data.game_name,
-        tag_line: api_account_data.tag_line,
+        puuid: puuid_lol,
+        puuid_tft,
+        game_name: game_name.clone(),
+        tag_line: tag.clone(),
         region,
         last_match_id: Default::default(),
     };
@@ -105,25 +117,7 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
         return Ok(());
     };
 
-    debug!("fetching PUUID for {}#{}", game_name, tag);
-    let account_data = ctx
-        .data()
-        .account_api
-        .get_account_by_riot_id(game_name.clone(), tag.clone())
-        .await?;
-
-    if let Err(e) = ctx
-        .data()
-        .db
-        .remove_account(account_data.puuid, guild_id)
-        .await
-    {
-        tracing::error!("DB error while untracking player: {}", e);
-        ctx.say("❌ Internal Error: Something went wrong during database operations.")
-            .await?;
-        return Ok(());
-    }
-
+    // FIXME: redo untrack
     ctx.say(format!(
         "🗑️ Successfully stopped tracking summoner: **{}#{}**",
         game_name, tag

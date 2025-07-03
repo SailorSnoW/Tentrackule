@@ -124,9 +124,10 @@ impl CachedAccountSource for SharedDatabase {
         )?;
 
         tx.execute(
-            "INSERT INTO accounts (puuid, game_name, tag_line, region, last_match_id)\n                VALUES (?1, ?2, ?3, ?4, '')\n                ON CONFLICT(puuid) DO UPDATE SET\n                    game_name = excluded.game_name,\n                    tag_line = excluded.tag_line,\n                    region = excluded.region",
+            "INSERT INTO accounts (puuid, puuid_tft, game_name, tag_line, region, last_match_id)\n                VALUES (?1, ?2, ?3, ?4, ?5, '')\n                ON CONFLICT(puuid) DO UPDATE SET\n                    puuid_tft = excluded.puuid_tft,\n                    game_name = excluded.game_name,\n                    tag_line = excluded.tag_line,\n                    region = excluded.region",
             [
                 account.puuid.clone(),
+                account.puuid_tft.clone(),
                 account.game_name,
                 account.tag_line,
                 account.region.into(),
@@ -187,19 +188,21 @@ impl CachedAccountSource for SharedDatabase {
     async fn get_all_accounts(&self) -> Result<Vec<Account>, CachedSourceError> {
         let db = self.conn.lock().await;
 
-        let mut stmt =
-            db.prepare("SELECT puuid, game_name, tag_line, region, last_match_id FROM accounts")?;
+        let mut stmt = db.prepare(
+            "SELECT puuid, puuid_tft, game_name, tag_line, region, last_match_id FROM accounts",
+        )?;
 
         let rows = stmt.query_map([], |row| {
             Ok(Account {
                 puuid: row.get(0)?,
-                game_name: row.get(1)?,
-                tag_line: row.get(2)?,
+                puuid_tft: row.get(1)?,
+                game_name: row.get(2)?,
+                tag_line: row.get(3)?,
                 region: {
-                    let s: String = row.get(3)?;
+                    let s: String = row.get(4)?;
                     s.try_into().unwrap()
                 },
-                last_match_id: row.get(4)?,
+                last_match_id: row.get(5)?,
             })
         })?;
 
@@ -244,7 +247,7 @@ impl CachedAccountGuildSource for SharedDatabase {
         let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
-            "SELECT a.puuid, a.game_name, a.tag_line, a.region, a.last_match_id
+            "SELECT a.puuid, a.puuid_tft, a.game_name, a.tag_line, a.region, a.last_match_id
             FROM accounts a
             INNER JOIN account_guilds ag ON a.puuid = ag.puuid
             WHERE ag.guild_id = ?",
@@ -253,13 +256,14 @@ impl CachedAccountGuildSource for SharedDatabase {
         let rows = stmt.query_map(params![guild_id_str], |row| {
             Ok(Account {
                 puuid: row.get(0)?,
-                game_name: row.get(1)?,
-                tag_line: row.get(2)?,
+                puuid_tft: row.get(1)?,
+                game_name: row.get(2)?,
+                tag_line: row.get(3)?,
                 region: {
-                    let s: String = row.get(3)?;
+                    let s: String = row.get(4)?;
                     s.try_into().unwrap()
                 },
-                last_match_id: row.get(4)?,
+                last_match_id: row.get(5)?,
             })
         })?;
 
@@ -371,6 +375,7 @@ impl SharedDatabase {
                 db.execute(
                     "CREATE TABLE IF NOT EXISTS accounts (
                         puuid TEXT PRIMARY KEY,
+                        puuid_tft TEXT NOT NULL,
                         game_name TEXT NOT NULL,
                         tag_line TEXT NOT NULL,
                         region TEXT NOT NULL,
@@ -397,6 +402,7 @@ impl SharedDatabase {
                 migrations::V3::do_migration(&db);
                 migrations::V4::do_migration(&db);
                 migrations::V5::do_migration(&db);
+                migrations::V6::do_migration(&db);
 
                 info!("database ready");
             })

@@ -22,6 +22,12 @@ mod handler;
 type Error = Box<dyn std::error::Error + Send + Sync>;
 type Context<'a> = poise::Context<'a, Data, Error>;
 
+#[derive(Debug)]
+pub struct ApiClients {
+    pub lol: Option<Arc<dyn AccountApi>>,
+    pub tft: Option<Arc<dyn AccountApi>>,
+}
+
 /// Wrapper around a Serenity [`Client`] with all command handlers registered.
 pub struct DiscordBot(Client);
 
@@ -30,7 +36,7 @@ impl DiscordBot {
         &self.0
     }
 
-    pub async fn new(db: Arc<dyn CacheFull>, account_api: Arc<dyn AccountApi>) -> Self {
+    pub async fn new(db: Arc<dyn CacheFull>, account_apis: ApiClients) -> Self {
         let token =
             env::var("DISCORD_BOT_TOKEN").expect("Expected a discord bot token in the environment");
         let intents = GatewayIntents::non_privileged();
@@ -52,7 +58,7 @@ impl DiscordBot {
             .setup(|ctx, _ready, framework| {
                 Box::pin(async move {
                     poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                    Ok(Data { db, account_api })
+                    Ok(Data { db, account_apis })
                 })
             })
             .build();
@@ -85,5 +91,5 @@ impl DiscordBot {
 #[derive(Debug)]
 pub struct Data {
     db: Arc<dyn CacheFull>,
-    account_api: Arc<dyn AccountApi>,
+    account_apis: ApiClients,
 }

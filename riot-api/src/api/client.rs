@@ -116,6 +116,7 @@ impl From<AccountDto> for Account {
     fn from(value: AccountDto) -> Self {
         Self {
             puuid: value.puuid,
+            puuid_tft: String::new(),
             game_name: value.game_name.unwrap(),
             tag_line: value.tag_line.unwrap(),
             region: Region::Euw,

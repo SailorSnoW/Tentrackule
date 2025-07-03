@@ -149,6 +149,7 @@ impl QueueKind for UnifiedQueueType {
 #[derive(Debug, Clone)]
 pub struct Account {
     pub puuid: String,
+    pub puuid_tft: String,
     pub game_name: String,
     pub tag_line: String,
     pub region: Region,
