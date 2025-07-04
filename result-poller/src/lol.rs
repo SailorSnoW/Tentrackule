@@ -14,8 +14,8 @@ use crate::{MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError, With
 pub type LolResultPoller = ResultPoller<LolApiClient, Match>;
 
 impl WithPuuid for LolResultPoller {
-    fn puuid_of(account: &Account) -> String {
-        account.puuid.clone().unwrap_or_default()
+    fn puuid_of(account: &Account) -> Option<String> {
+        account.puuid.clone()
     }
 }
 

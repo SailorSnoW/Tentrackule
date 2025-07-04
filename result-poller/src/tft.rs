@@ -12,8 +12,8 @@ use crate::{MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError, With
 pub type TftResultPoller = ResultPoller<TftApiClient, Match>;
 
 impl WithPuuid for TftResultPoller {
-    fn puuid_of(account: &Account) -> String {
-        account.puuid_tft.clone().unwrap_or_default()
+    fn puuid_of(account: &Account) -> Option<String> {
+        account.puuid_tft.clone()
     }
 }
 

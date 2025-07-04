@@ -35,7 +35,7 @@ pub trait MatchCreationTime {
 }
 
 pub trait WithPuuid {
-    fn puuid_of(account: &Account) -> String;
+    fn puuid_of(account: &Account) -> Option<String>;
 }
 
 #[async_trait]
@@ -114,10 +114,24 @@ where
     where
         Self: WithPuuid,
     {
+        let puuid = match Self::puuid_of(account).clone() {
+            Some(x) => {
+                if x == String::new() {
+                    return Ok(());
+                } else {
+                    x
+                }
+            }
+            None => {
+                warn!("Player doesn't have a cached puuid, ignoring.");
+                return Ok(());
+            }
+        };
+
         debug!("checking {}#{}", account.game_name, account.tag_line);
         let last_match_id = match self
             .api
-            .get_last_match_id(Self::puuid_of(account).clone(), account.region)
+            .get_last_match_id(puuid.clone(), account.region)
             .await
             .map_err(ResultPollerError::RiotApiError)?
         {
@@ -138,7 +152,7 @@ where
             last_match_id
         );
         self.cache
-            .set_last_match_id(Self::puuid_of(account).clone(), last_match_id.clone())
+            .set_last_match_id(puuid, last_match_id.clone())
             .await
             .map_err(ResultPollerError::CacheError)?;
 
