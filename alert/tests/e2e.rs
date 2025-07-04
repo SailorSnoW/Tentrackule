@@ -8,7 +8,7 @@ use tentrackule_alert::{
     alert_dispatcher::AlertDispatcher,
 };
 use tentrackule_shared::{
-    Account, Region, lol_match,
+    Account, League, Region, lol_match,
     traits::{CachedSettingSource, CachedSourceError, QueueKind},
 };
 use uuid::Uuid;
@@ -43,6 +43,17 @@ fn sample_account_with_puuids(puuid_lol: Option<String>, puuid_tft: Option<Strin
         region: Region::Euw,
         last_match_id: None,
         last_match_id_tft: None,
+    }
+}
+
+fn sample_league(queue: &str, lp: u16) -> League {
+    League {
+        queue_type: queue.to_string(),
+        league_points: lp,
+        wins: 1,
+        losses: 1,
+        rank: "I".to_string(),
+        tier: "Bronze".to_string(),
     }
 }
 
@@ -108,7 +119,7 @@ async fn dispatch_alert_to_discord() {
 mod lol {
     use super::*;
     use tentrackule_shared::{
-        Account, League, init_ddragon_version,
+        Account, init_ddragon_version,
         lol_match::{Match, MatchParticipant, MatchRanked},
         traits::{CachedAccountGuildSource, CachedSourceError},
     };
@@ -125,17 +136,6 @@ mod lol {
             profile_icon: 1,
             riot_id_game_name: "Tester".to_string(),
             riot_id_tagline: "EUW".to_string(),
-        }
-    }
-
-    fn sample_league(queue: &str, lp: u16) -> League {
-        League {
-            queue_type: queue.to_string(),
-            league_points: lp,
-            wins: 1,
-            losses: 1,
-            rank: "I".to_string(),
-            tier: "Bronze".to_string(),
         }
     }
 
@@ -321,6 +321,7 @@ mod lol {
 
 mod tft {
     use super::*;
+    use lol_match::MatchRanked;
     use tentrackule_shared::tft_match::{Companion, Info, Match, Metadata, Participant, Unit};
 
     fn sample_participant(
@@ -395,5 +396,50 @@ mod tft {
         };
 
         dispatcher.dispatch_alert(&acc, m).await;
+    }
+
+    #[tokio::test]
+    #[ignore = "Requires Discord credentials"]
+    async fn tft_dispatch_ranked_game_alert() {
+        dotenv().ok();
+        let token = env::var("DISCORD_BOT_TOKEN").expect("DISCORD_BOT_TOKEN not set");
+        let channel_id: u64 = env::var("TEST_CHANNEL_ID")
+            .expect("TEST_CHANNEL_ID not set")
+            .parse()
+            .expect("invalid channel id");
+
+        let http = Arc::new(Http::new(&token));
+        let cache = TestCache {
+            channel: ChannelId::new(channel_id),
+        };
+
+        let dispatcher = AlertDispatcher::new(http, cache);
+
+        let u = vec![
+            sample_unit("Zac", 2, 6, 2),
+            sample_unit("Morgana", 2, 2, 1),
+            sample_unit("Vi", 3, 2, 0),
+        ];
+        let acc = sample_account_with_puuids(None, Some("p1".to_string()));
+        let p = sample_participant("p1", 2, sample_companion(), u);
+        let base = Match {
+            metadata: Metadata {
+                match_id: "TEST_1".to_string(),
+            },
+            info: Info {
+                tft_set_number: 14,
+                participants: vec![p.clone()],
+                queue_id: 1100,
+                game_creation: 0,
+            },
+        };
+
+        let ranked = MatchRanked {
+            base,
+            current_league: sample_league("RANKED_TFT", 40),
+            cached_league: Some(sample_league("RANKED_TFT", 20)),
+        };
+
+        dispatcher.dispatch_alert(&acc, ranked).await;
     }
 }

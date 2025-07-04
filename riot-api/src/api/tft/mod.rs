@@ -1,11 +1,11 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use tentrackule_shared::{
-    Region,
+    League, Region,
     tft_match::{self, Match},
     traits::{
         RiotAccountResponse,
-        api::{AccountApi, ApiError, ApiRequest, MatchApi},
+        api::{AccountApi, ApiError, ApiRequest, LeagueApi, MatchApi},
     },
 };
 
@@ -86,5 +86,19 @@ impl MatchApi<Match> for TftApiClient {
 
         let raw = self.request(path).await?;
         Ok(serde_json::from_slice(&raw).map_err(RiotApiError::Serde)?)
+    }
+}
+
+#[async_trait]
+impl LeagueApi for TftApiClient {
+    async fn get_leagues(&self, puuid: String, region: Region) -> Result<Vec<League>, ApiError> {
+        let path = format!(
+            "https://{}/tft/league/v1/by-puuid/{}",
+            region.to_endpoint(),
+            puuid,
+        );
+
+        let raw = self.request(path).await?;
+        serde_json::from_slice(&raw).map_err(|e| RiotApiError::Serde(e).into())
     }
 }

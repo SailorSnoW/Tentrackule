@@ -2,11 +2,12 @@ use async_trait::async_trait;
 use tentrackule_alert::{AlertDispatch, alert_dispatcher::DiscordAlertDispatcher};
 use tentrackule_db::SharedDatabase;
 use tentrackule_riot_api::api::tft::TftApiClient;
-use tentrackule_shared::traits::{CachedAccountSource, CachedSourceError};
+use tentrackule_shared::traits::{CachedAccountSource, CachedLeagueSource, CachedSourceError};
 use tentrackule_shared::{
     Account,
     tft_match::{Match, QueueType},
 };
+use tracing::{debug, error};
 
 use crate::{
     MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError, WithLastMatchId, WithPuuid,
@@ -56,6 +57,33 @@ impl OnNewMatch<TftApiClient, Match> for TftResultPoller {
             QueueType::Normal => {
                 self.alert_dispatcher()
                     .dispatch_alert(account, match_data)
+                    .await;
+                Ok(())
+            }
+            QueueType::Ranked => {
+                let match_ranked = match match_data
+                    .try_into_match_ranked::<TftApiClient, SharedDatabase>(
+                        account,
+                        self.api.clone(),
+                        &self.cache,
+                    )
+                    .await
+                {
+                    Ok(data) => data,
+                    Err(e) => {
+                        error!("conversion of match into a ranked match failed: {}", e);
+                        return Ok(());
+                    }
+                };
+                debug!(league = ?match_ranked.current_league, "updating league");
+                self.cache
+                    .set_league_for(account.id, match_ranked.current_league.clone())
+                    .await
+                    .map_err(ResultPollerError::CacheError)?;
+
+                debug!("dispatching alert");
+                self.alert_dispatcher()
+                    .dispatch_alert(account, match_ranked)
                     .await;
                 Ok(())
             }

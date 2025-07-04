@@ -179,6 +179,10 @@ impl League {
     pub fn is_ranked_flex(&self) -> bool {
         self.queue_type.eq("RANKED_FLEX_SR")
     }
+
+    pub fn is_ranked_tft(&self) -> bool {
+        self.queue_type.eq("RANKED_TFT")
+    }
 }
 
 impl LeaguePoints for League {

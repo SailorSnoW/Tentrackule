@@ -1,13 +1,26 @@
-use std::fmt::{self, Display};
+use std::{
+    fmt::{self, Display},
+    sync::Arc,
+};
 
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
+use tracing::warn;
 
-use crate::{UnifiedQueueType, traits::QueueKind};
+use crate::{
+    Account, UnifiedQueueType,
+    errors::RiotMatchError,
+    lol_match::MatchRanked,
+    traits::{
+        CachedLeagueSource, QueueKind,
+        api::{LeagueApi, LeagueQueueType},
+    },
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QueueType {
     Normal,
+    Ranked,
     Unhandled,
 }
 
@@ -15,6 +28,7 @@ impl From<u16> for QueueType {
     fn from(value: u16) -> Self {
         match value {
             1090 => Self::Normal,
+            1100 => Self::Ranked,
             _ => Self::Unhandled,
         }
     }
@@ -24,6 +38,7 @@ impl Display for QueueType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let name = match self {
             QueueType::Normal => "NORMAL_TFT",
+            QueueType::Ranked => "RANKED_TFT",
             QueueType::Unhandled => "UNHANDLED",
         };
 
@@ -34,15 +49,6 @@ impl Display for QueueType {
 impl QueueKind for QueueType {
     fn to_unified(&self) -> UnifiedQueueType {
         UnifiedQueueType::Tft(*self)
-    }
-}
-
-impl QueueType {
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            QueueType::Normal => "NORMAL_TFT",
-            QueueType::Unhandled => "UNHANDLED",
-        }
     }
 }
 
@@ -62,6 +68,50 @@ impl Match {
     }
     pub fn to_trackergg_url(&self) -> String {
         format!("https://tracker.gg/tft/match/{}", self.metadata.match_id)
+    }
+
+    pub async fn try_into_match_ranked<Api, Cache>(
+        self,
+        ranking_of: &Account,
+        api: Arc<dyn LeagueApi>,
+        cache: &Cache,
+    ) -> Result<MatchRanked<Self>, RiotMatchError>
+    where
+        Cache: CachedLeagueSource,
+    {
+        let queue_type: QueueType = self.info.queue_id.into();
+        let maybe_cached_league = cache
+            .get_league_for(ranking_of.id, &queue_type)
+            .await
+            .map_err(|e| RiotMatchError::CantRetrieveCachedLeague(e))?;
+
+        if maybe_cached_league.is_none() {
+            warn!(
+                "No cached league is existing for puuid: {} with queue_id: {}.",
+                ranking_of.id, self.info.queue_id
+            )
+        }
+
+        let current_leagues = api
+            .get_leagues(
+                ranking_of.puuid.clone().unwrap_or_default(),
+                ranking_of.region,
+            )
+            .await
+            .map_err(|e| RiotMatchError::RiotApiError(e))?;
+        let current_league = current_leagues
+            .into_iter()
+            .find(|league| league.queue_type().eq(&queue_type.to_string()))
+            .ok_or(RiotMatchError::NoApiLeagueFound(
+                queue_type.to_string(),
+                ranking_of.puuid.clone().unwrap_or_default(),
+            ))?;
+
+        Ok(MatchRanked {
+            base: self,
+            current_league,
+            cached_league: maybe_cached_league,
+        })
     }
 }
 
