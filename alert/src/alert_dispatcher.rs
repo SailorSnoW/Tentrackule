@@ -121,13 +121,25 @@ mod tests {
     use poise::serenity_prelude::{self as serenity};
     use std::sync::{Arc, Mutex};
     use tentrackule_shared::{
-        Account, UnifiedQueueType,
+        Account, Region, UnifiedQueueType,
         traits::{CachedSourceError, QueueKind},
     };
 
     struct DummySender {
         pub sent: Arc<Mutex<Vec<(ChannelId, String)>>>,
         pub fail: bool,
+    }
+
+    fn sample_account() -> Account {
+        Account {
+            id: Uuid::new_v4(),
+            puuid: Some("p".to_string()),
+            puuid_tft: None,
+            game_name: "Game".to_string(),
+            tag_line: "Tag".to_string(),
+            region: Region::Euw,
+            last_match_id: "".to_string(),
+        }
     }
 
     #[async_trait]
@@ -284,7 +296,9 @@ mod tests {
         let cache = DummyCacheWithQueues { guilds, enabled };
         let dispatcher = AlertDispatcher::new(sender, cache);
 
-        dispatcher.dispatch_alert("p", DummyAlert).await;
+        dispatcher
+            .dispatch_alert(&sample_account(), DummyAlert)
+            .await;
 
         assert!(dispatcher.sender.sent.lock().unwrap().is_empty());
     }
@@ -322,7 +336,9 @@ mod tests {
         let cache = DummyCacheWithQueues { guilds, enabled };
         let dispatcher = AlertDispatcher::new(sender, cache);
 
-        dispatcher.dispatch_alert("p", DummyAlert).await;
+        dispatcher
+            .dispatch_alert(&sample_account(), DummyAlert)
+            .await;
 
         let msgs = dispatcher.sender.sent.lock().unwrap();
         assert_eq!(msgs.len(), 1);
@@ -331,7 +347,7 @@ mod tests {
 
     struct DummyAlert;
     impl TryIntoAlert for DummyAlert {
-        fn try_into_alert(&self, _: &str) -> Result<Alert, AlertCreationError> {
+        fn try_into_alert(&self, _: &Account) -> Result<Alert, AlertCreationError> {
             Ok(CreateEmbed::new().description("test"))
         }
     }
@@ -343,8 +359,10 @@ mod tests {
 
     struct FailingAlert;
     impl TryIntoAlert for FailingAlert {
-        fn try_into_alert(&self, _: &str) -> Result<Alert, AlertCreationError> {
-            Err(AlertCreationError::PuuidNotInMatch { puuid: "x".into() })
+        fn try_into_alert(&self, _: &Account) -> Result<Alert, AlertCreationError> {
+            Err(AlertCreationError::PuuidNotInMatch {
+                puuid: Some("x".into()),
+            })
         }
     }
     impl QueueTyped<lol_match::QueueType> for FailingAlert {
@@ -368,7 +386,9 @@ mod tests {
         let cache = DummyCache { guilds };
         let dispatcher = AlertDispatcher::new(sender, cache);
 
-        dispatcher.dispatch_alert("p", DummyAlert).await;
+        dispatcher
+            .dispatch_alert(&sample_account(), DummyAlert)
+            .await;
 
         let msgs = dispatcher.sender.sent.lock().unwrap();
         assert_eq!(msgs.len(), 1);
@@ -386,7 +406,9 @@ mod tests {
         };
         let dispatcher = AlertDispatcher::new(sender, cache);
 
-        dispatcher.dispatch_alert("p", FailingAlert).await;
+        dispatcher
+            .dispatch_alert(&sample_account(), FailingAlert)
+            .await;
 
         assert!(dispatcher.sender.sent.lock().unwrap().is_empty());
     }
@@ -403,7 +425,9 @@ mod tests {
         let cache = DummyCache { guilds };
         let dispatcher = AlertDispatcher::new(sender, cache);
 
-        dispatcher.dispatch_alert("p", DummyAlert).await;
+        dispatcher
+            .dispatch_alert(&sample_account(), DummyAlert)
+            .await;
 
         // Should record no messages due to failure
         assert!(dispatcher.sender.sent.lock().unwrap().is_empty());

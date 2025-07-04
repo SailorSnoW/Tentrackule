@@ -9,7 +9,7 @@ use crate::{Alert, AlertCreationError, TryIntoAlert};
 impl TryIntoAlert for Match {
     fn try_into_alert(&self, account: &Account) -> Result<Alert, AlertCreationError> {
         let focused_participant = self
-            .participant(&account.puuid.clone().unwrap_or_default())
+            .participant(&account.puuid_tft.clone().unwrap_or_default())
             .ok_or_else(|| AlertCreationError::PuuidNotInMatch {
                 puuid: account.puuid.clone(),
             })?;

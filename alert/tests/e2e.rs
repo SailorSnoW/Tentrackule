@@ -8,14 +8,15 @@ use tentrackule_alert::{
     alert_dispatcher::AlertDispatcher,
 };
 use tentrackule_shared::{
-    lol_match,
+    Account, Region, lol_match,
     traits::{CachedSettingSource, CachedSourceError, QueueKind},
 };
+use uuid::Uuid;
 
 struct DummyAlert;
 
 impl TryIntoAlert for DummyAlert {
-    fn try_into_alert(&self, _puuid_focus: &str) -> Result<Alert, AlertCreationError> {
+    fn try_into_alert(&self, _account: &Account) -> Result<Alert, AlertCreationError> {
         Ok(CreateEmbed::new()
             .title("E2E Alert")
             .description("This is a test"))
@@ -30,6 +31,18 @@ impl QueueTyped<lol_match::QueueType> for DummyAlert {
 
 struct TestCache {
     channel: ChannelId,
+}
+
+fn sample_account_with_puuids(puuid_lol: Option<String>, puuid_tft: Option<String>) -> Account {
+    Account {
+        id: Uuid::new_v4(),
+        puuid: puuid_lol,
+        puuid_tft,
+        game_name: "Game".to_string(),
+        tag_line: "Tag".to_string(),
+        region: Region::Euw,
+        last_match_id: "".to_string(),
+    }
 }
 
 #[async_trait]
@@ -83,7 +96,12 @@ async fn dispatch_alert_to_discord() {
 
     let dispatcher = AlertDispatcher::new(http, cache);
 
-    dispatcher.dispatch_alert("puuid", DummyAlert).await;
+    dispatcher
+        .dispatch_alert(
+            &sample_account_with_puuids(Some("puuid".to_string()), None),
+            DummyAlert,
+        )
+        .await;
 }
 
 mod lol {
@@ -124,7 +142,7 @@ mod lol {
     impl CachedAccountGuildSource for TestCache {
         async fn get_guilds_for(
             &self,
-            _puuid: String,
+            _id: Uuid,
         ) -> Result<HashMap<GuildId, Option<ChannelId>>, CachedSourceError> {
             Ok([(GuildId::new(1), Some(self.channel))]
                 .into_iter()
@@ -157,6 +175,7 @@ mod lol {
 
         let dispatcher = AlertDispatcher::new(http, cache);
 
+        let acc = sample_account_with_puuids(Some("p1".to_string()), None);
         let p = sample_participant("p1", true, "MIDDLE");
         let m = Match {
             participants: vec![p.clone()],
@@ -165,7 +184,7 @@ mod lol {
             game_creation: 0,
         };
 
-        dispatcher.dispatch_alert("p1", m).await;
+        dispatcher.dispatch_alert(&acc, m).await;
     }
 
     #[tokio::test]
@@ -186,6 +205,7 @@ mod lol {
 
         let dispatcher = AlertDispatcher::new(http, cache);
 
+        let acc = sample_account_with_puuids(Some("p1".to_string()), None);
         let p = sample_participant("p1", true, "TOP");
         let base = Match {
             participants: vec![p.clone()],
@@ -199,7 +219,7 @@ mod lol {
             cached_league: Some(sample_league("RANKED_SOLO_5x5", 20)),
         };
 
-        dispatcher.dispatch_alert("p1", ranked).await;
+        dispatcher.dispatch_alert(&acc, ranked).await;
     }
 
     #[tokio::test]
@@ -220,6 +240,7 @@ mod lol {
 
         let dispatcher = AlertDispatcher::new(http, cache);
 
+        let acc = sample_account_with_puuids(Some("p1".to_string()), None);
         let p = sample_participant("p1", false, "JUNGLE");
         let base = Match {
             participants: vec![p.clone()],
@@ -233,7 +254,7 @@ mod lol {
             cached_league: Some(sample_league("RANKED_FLEX_SR", 20)),
         };
 
-        dispatcher.dispatch_alert("p1", ranked).await;
+        dispatcher.dispatch_alert(&acc, ranked).await;
     }
 
     #[tokio::test]
@@ -254,6 +275,7 @@ mod lol {
 
         let dispatcher = AlertDispatcher::new(http, cache);
 
+        let acc = sample_account_with_puuids(Some("p1".to_string()), None);
         let p = sample_participant("p1", true, "UTILITY");
         let m = Match {
             participants: vec![p.clone()],
@@ -262,7 +284,7 @@ mod lol {
             game_creation: 0,
         };
 
-        dispatcher.dispatch_alert("p1", m).await;
+        dispatcher.dispatch_alert(&acc, m).await;
     }
 
     #[tokio::test]
@@ -283,6 +305,7 @@ mod lol {
 
         let dispatcher = AlertDispatcher::new(http, cache);
 
+        let acc = sample_account_with_puuids(Some("p1".to_string()), None);
         let p = sample_participant("p1", true, "UTILITY");
         let m = Match {
             participants: vec![p.clone()],
@@ -291,7 +314,7 @@ mod lol {
             game_creation: 0,
         };
 
-        dispatcher.dispatch_alert("p1", m).await;
+        dispatcher.dispatch_alert(&acc, m).await;
     }
 }
 
@@ -356,6 +379,7 @@ mod tft {
             sample_unit("Morgana", 2, 2, 1),
             sample_unit("Vi", 3, 2, 0),
         ];
+        let acc = sample_account_with_puuids(None, Some("p1".to_string()));
         let p = sample_participant("p1", 2, sample_companion(), u);
         let m = Match {
             metadata: Metadata {
@@ -369,6 +393,6 @@ mod tft {
             },
         };
 
-        dispatcher.dispatch_alert("p1", m).await;
+        dispatcher.dispatch_alert(&acc, m).await;
     }
 }

@@ -159,9 +159,22 @@ mod tests {
     use super::*;
     use serde_json::Value;
     use tentrackule_shared::{
-        League, init_ddragon_version,
+        League, Region, init_ddragon_version,
         lol_match::{Match, MatchParticipant, MatchRanked},
     };
+    use uuid::Uuid;
+
+    fn sample_account() -> Account {
+        Account {
+            id: Uuid::new_v4(),
+            puuid: Some("p1".to_string()),
+            puuid_tft: None,
+            game_name: "Game".to_string(),
+            tag_line: "Tag".to_string(),
+            region: Region::Euw,
+            last_match_id: "".to_string(),
+        }
+    }
 
     fn sample_participant(puuid: &str, win: bool, role: &str) -> MatchParticipant {
         MatchParticipant {
@@ -199,7 +212,7 @@ mod tests {
             game_duration: 600,
             game_creation: 0,
         };
-        let embed = m.try_into_alert("p1").unwrap();
+        let embed = m.try_into_alert(&sample_account()).unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
         assert_eq!(data["author"]["name"], "[LoL] Normal Draft");
         // Role field should be present
@@ -222,7 +235,7 @@ mod tests {
             game_duration: 600,
             game_creation: 0,
         };
-        let embed = m.try_into_alert("p1").unwrap();
+        let embed = m.try_into_alert(&sample_account()).unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
         assert_eq!(data["author"]["name"], "[LoL] ARAM");
         assert!(
@@ -244,7 +257,7 @@ mod tests {
             game_duration: 600,
             game_creation: 0,
         };
-        match m.try_into_alert("p1").unwrap_err() {
+        match m.try_into_alert(&sample_account()).unwrap_err() {
             AlertCreationError::UnsupportedQueueType { queue_id } => assert_eq!(queue_id, 999),
             _ => panic!("unexpected error"),
         }
@@ -260,8 +273,12 @@ mod tests {
             game_duration: 600,
             game_creation: 0,
         };
-        match m.try_into_alert("other").unwrap_err() {
-            AlertCreationError::PuuidNotInMatch { puuid } => assert_eq!(puuid, "other"),
+        let mut account = sample_account();
+        account.puuid = Some("other".to_string());
+        match m.try_into_alert(&account).unwrap_err() {
+            AlertCreationError::PuuidNotInMatch { puuid } => {
+                assert_eq!(puuid, Some("other".to_string()))
+            }
             _ => panic!("unexpected error"),
         }
     }
@@ -281,7 +298,7 @@ mod tests {
             current_league: league("RANKED_SOLO_5x5"),
             cached_league: Some(league("RANKED_SOLO_5x5")),
         };
-        let embed = ranked.try_into_alert("p1").unwrap();
+        let embed = ranked.try_into_alert(&sample_account()).unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
         assert_eq!(data["author"]["name"], "[LoL] Solo/Duo Queue");
     }
@@ -301,7 +318,7 @@ mod tests {
             current_league: league("RANKED_FLEX_SR"),
             cached_league: Some(league("RANKED_FLEX_SR")),
         };
-        let embed = ranked.try_into_alert("p1").unwrap();
+        let embed = ranked.try_into_alert(&sample_account()).unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
         assert_eq!(data["author"]["name"], "[LoL] Flex Queue");
     }
@@ -321,7 +338,7 @@ mod tests {
             current_league: league("UNHANDLED"),
             cached_league: Some(league("UNHANDLED")),
         };
-        match ranked.try_into_alert("p1").unwrap_err() {
+        match ranked.try_into_alert(&sample_account()).unwrap_err() {
             AlertCreationError::UnsupportedQueueType { queue_id } => assert_eq!(queue_id, 999),
             _ => panic!("unexpected error"),
         }
@@ -337,7 +354,7 @@ mod tests {
             game_creation: 0,
         };
 
-        let embed = m.try_into_alert("p1").unwrap();
+        let embed = m.try_into_alert(&sample_account()).unwrap();
         let data: Value = serde_json::to_value(&embed).unwrap();
         assert_eq!(data["title"], "Remake");
     }
