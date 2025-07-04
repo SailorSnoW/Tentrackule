@@ -149,7 +149,45 @@ pub async fn untrack(ctx: Context<'_>, game_name: String, tag: String) -> Result
         return Ok(());
     };
 
-    // FIXME: redo untrack
+    debug!("[CMD] fetching LoL client PUUID for {}#{}", game_name, tag);
+    let mut account: Option<Account> = if let Some(lol_client) = ctx.data().account_apis.lol.clone()
+    {
+        let puuid = lol_client
+            .get_account_by_riot_id(game_name.clone(), tag.clone())
+            .await?
+            .puuid();
+        ctx.data().db.get_account_by_puuid(puuid).await?
+    } else {
+        None
+    };
+
+    if account.is_none() {
+        debug!("[CMD] fetching TFT client PUUID for {}#{}", game_name, tag);
+        if let Some(tft_client) = ctx.data().account_apis.tft.clone() {
+            let puuid = tft_client
+                .get_account_by_riot_id(game_name.clone(), tag.clone())
+                .await?
+                .puuid();
+            account = ctx.data().db.get_account_by_puuid(puuid).await?;
+        }
+    }
+
+    let Some(account) = account else {
+        ctx.say(format!(
+            "❌ Account **{}#{}** is not tracked.",
+            game_name, tag
+        ))
+        .await?;
+        return Ok(());
+    };
+
+    if let Err(e) = ctx.data().db.remove_account(account.id, guild_id).await {
+        tracing::error!("DB error while untracking player: {}", e);
+        ctx.say("❌ Internal Error: Something went wrong during database operations.")
+            .await?;
+        return Ok(());
+    }
+
     ctx.say(format!(
         "🗑️ Successfully stopped tracking summoner: **{}#{}**",
         game_name, tag
