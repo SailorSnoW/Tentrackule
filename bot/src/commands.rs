@@ -65,20 +65,24 @@ pub async fn track(
 
     debug!("[CMD] fetching LoL client PUUID for {}#{}", game_name, tag);
     let puuid_lol = if let Some(lol_client) = ctx.data().account_apis.lol.clone() {
-        lol_client
-            .get_account_by_riot_id(game_name.clone(), tag.clone())
-            .await?
-            .puuid
+        Some(
+            lol_client
+                .get_account_by_riot_id(game_name.clone(), tag.clone())
+                .await?
+                .puuid(),
+        )
     } else {
         None
     };
 
     debug!("[CMD] fetching TFT client PUUID for {}#{}", game_name, tag);
     let puuid_tft = if let Some(tft_client) = ctx.data().account_apis.tft.clone() {
-        tft_client
-            .get_account_by_riot_id(game_name.clone(), tag.clone())
-            .await?
-            .puuid
+        Some(
+            tft_client
+                .get_account_by_riot_id(game_name.clone(), tag.clone())
+                .await?
+                .puuid(),
+        )
     } else {
         None
     };

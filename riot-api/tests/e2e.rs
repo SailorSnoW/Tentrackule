@@ -21,11 +21,12 @@ mod lol {
             .unwrap();
 
         assert_eq!(
-            account.puuid,
+            account.puuid(),
             "jG0VKFsMuF2aWaQoiDxJ1brhlXyMY7kj4HfIAucciWH_9YVdWVpbQDIRhJWQQGhP89qCrp5EwLxl3Q"
+                .to_string()
         );
-        assert_eq!(account.game_name, "Le Conservateur".to_string());
-        assert_eq!(account.tag_line, "3012".to_string());
+        assert_eq!(account.game_name(), Some("Le Conservateur".to_string()));
+        assert_eq!(account.tagline(), Some("3012".to_string()));
     }
 
     #[tokio::test]
@@ -41,7 +42,7 @@ mod lol {
             .unwrap();
 
         let last_id = api
-            .get_last_match_id(account.puuid.clone(), Region::Euw)
+            .get_last_match_id(account.puuid(), Region::Euw)
             .await
             .unwrap()
             .expect("should return a match id");
@@ -63,10 +64,7 @@ mod lol {
             .await
             .unwrap();
 
-        let leagues = api
-            .get_leagues(account.puuid.clone(), Region::Euw)
-            .await
-            .unwrap();
+        let leagues = api.get_leagues(account.puuid(), Region::Euw).await.unwrap();
 
         for league in &leagues {
             assert!(!league.queue_type.is_empty());
@@ -92,7 +90,7 @@ mod tft {
             .unwrap();
 
         let last_id = api
-            .get_last_match_id(account.puuid.clone(), Region::Euw)
+            .get_last_match_id(account.puuid(), Region::Euw)
             .await
             .unwrap()
             .expect("should return a match id");

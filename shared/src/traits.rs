@@ -12,6 +12,12 @@ pub trait QueueKind: ToString + Send + Sync {
     fn to_unified(&self) -> UnifiedQueueType;
 }
 
+pub trait RiotAccountResponse {
+    fn puuid(&self) -> String;
+    fn game_name(&self) -> Option<String>;
+    fn tagline(&self) -> Option<String>;
+}
+
 #[async_trait]
 pub trait CachedLeagueSource {
     async fn get_league_for(
@@ -128,7 +134,7 @@ pub mod api {
             &self,
             game_name: String,
             tag_line: String,
-        ) -> Result<Account, ApiError>;
+        ) -> Result<Box<dyn RiotAccountResponse>, ApiError>;
     }
 
     pub trait LolApiFull: LeagueApi + MatchApi<Match> + AccountApi {}

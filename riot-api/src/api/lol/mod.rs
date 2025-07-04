@@ -3,9 +3,12 @@ use bytes::Bytes;
 use match_v5::MatchDto;
 use std::fmt::Debug;
 use tentrackule_shared::{
-    Account, League, Region,
+    League, Region,
     lol_match::Match,
-    traits::api::{AccountApi, ApiError, ApiRequest, LeagueApi, LolApiFull, MatchApi},
+    traits::{
+        RiotAccountResponse,
+        api::{AccountApi, ApiError, ApiRequest, LeagueApi, LolApiFull, MatchApi},
+    },
 };
 
 use crate::types::RiotApiError;
@@ -64,7 +67,7 @@ impl AccountApi for LolApiClient {
         &self,
         game_name: String,
         tag_line: String,
-    ) -> Result<Account, ApiError> {
+    ) -> Result<Box<dyn RiotAccountResponse>, ApiError> {
         self.0.get_account_by_riot_id(game_name, tag_line).await
     }
 }

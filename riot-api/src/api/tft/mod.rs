@@ -1,9 +1,12 @@
 use async_trait::async_trait;
 use bytes::Bytes;
 use tentrackule_shared::{
-    Account, Region,
+    Region,
     tft_match::{self, Match},
-    traits::api::{AccountApi, ApiError, ApiRequest, MatchApi},
+    traits::{
+        RiotAccountResponse,
+        api::{AccountApi, ApiError, ApiRequest, MatchApi},
+    },
 };
 
 use crate::types::RiotApiError;
@@ -44,7 +47,7 @@ impl AccountApi for TftApiClient {
         &self,
         game_name: String,
         tag_line: String,
-    ) -> Result<Account, ApiError> {
+    ) -> Result<Box<dyn RiotAccountResponse>, ApiError> {
         self.0.get_account_by_riot_id(game_name, tag_line).await
     }
 }

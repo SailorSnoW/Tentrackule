@@ -60,7 +60,7 @@ impl OnNewMatch<LolApiClient, Match> for LolResultPoller {
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
-                    .dispatch_alert(&account, match_ranked)
+                    .dispatch_alert(account, match_ranked)
                     .await;
 
                 Ok(())

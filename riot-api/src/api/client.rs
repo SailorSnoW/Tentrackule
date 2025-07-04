@@ -11,11 +11,10 @@ use governor::{
 use nonzero_ext::nonzero;
 use reqwest::StatusCode;
 use serde::Deserialize;
-use tentrackule_shared::{
-    Account, Region,
-    traits::api::{AccountApi, ApiError, ApiRequest},
+use tentrackule_shared::traits::{
+    RiotAccountResponse,
+    api::{AccountApi, ApiError, ApiRequest},
 };
-use uuid::Uuid;
 
 use crate::types::RiotApiError;
 
@@ -84,7 +83,7 @@ impl AccountApi for ApiClientBase {
         &self,
         game_name: String,
         tag_line: String,
-    ) -> Result<Account, ApiError> {
+    ) -> Result<Box<dyn RiotAccountResponse>, ApiError> {
         tracing::trace!(
             "[AccountV1 API] get_account_by_riot_id {}#{}",
             game_name,
@@ -98,9 +97,9 @@ impl AccountApi for ApiClientBase {
         );
 
         let raw = self.request(path).await?;
-        let account_dto: AccountDto = serde_json::from_slice(&raw).map_err(RiotApiError::Serde)?;
+        let account: AccountDto = serde_json::from_slice(&raw).map_err(RiotApiError::Serde)?;
 
-        Ok(account_dto.into())
+        Ok(Box::new(account))
     }
 }
 
@@ -113,17 +112,15 @@ pub struct AccountDto {
     pub tag_line: Option<String>,
 }
 
-impl From<AccountDto> for Account {
-    fn from(value: AccountDto) -> Self {
-        Self {
-            id: Uuid::new_v4(),
-            puuid: Some(value.puuid),
-            puuid_tft: None,
-            game_name: value.game_name.unwrap(),
-            tag_line: value.tag_line.unwrap(),
-            region: Region::Euw,
-            last_match_id: Default::default(),
-        }
+impl RiotAccountResponse for AccountDto {
+    fn tagline(&self) -> Option<String> {
+        self.tag_line.clone()
+    }
+    fn game_name(&self) -> Option<String> {
+        self.game_name.clone()
+    }
+    fn puuid(&self) -> String {
+        self.puuid.clone()
     }
 }
 
@@ -140,7 +137,6 @@ mod tests {
     use nonzero_ext::nonzero;
     use serde_json::json;
     use std::env;
-    use tentrackule_shared::Account;
 
     #[tokio::test]
     async fn request_propagates_reqwest_error() {
@@ -163,20 +159,6 @@ mod tests {
                 .map(|e| matches!(e, RiotApiError::Reqwest(_)))
                 .unwrap_or(false)
         );
-    }
-
-    #[test]
-    fn account_dto_into_account() {
-        let dto = AccountDto {
-            puuid: "id".to_string(),
-            game_name: Some("Name".to_string()),
-            tag_line: Some("Tag".to_string()),
-        };
-
-        let account: Account = dto.clone().into();
-        assert_eq!(account.puuid.unwrap(), dto.puuid);
-        assert_eq!(account.game_name, "Name".to_string());
-        assert_eq!(account.tag_line, "Tag".to_string());
     }
 
     #[tokio::test]
@@ -209,10 +191,9 @@ mod tests {
         );
         let raw = api.request(route).await.unwrap();
         let account_dto: AccountDto = serde_json::from_slice(&raw).unwrap();
-        let account: Account = account_dto.into();
 
         mock.assert();
-        assert_eq!(account.game_name, "Game".to_string());
-        assert_eq!(account.tag_line, "Tag".to_string());
+        assert_eq!(account_dto.game_name, Some("Game".to_string()));
+        assert_eq!(account_dto.tag_line, Some("Tag".to_string()));
     }
 }
