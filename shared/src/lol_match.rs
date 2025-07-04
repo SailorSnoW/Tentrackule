@@ -93,7 +93,7 @@ impl Match {
         ranking_of: &Account,
         api: Arc<dyn LeagueApi>,
         cache: &Cache,
-    ) -> Result<MatchRanked, RiotMatchError>
+    ) -> Result<MatchRanked<Self>, RiotMatchError>
     where
         Cache: CachedLeagueSource,
     {
@@ -218,13 +218,13 @@ impl MatchParticipant {
     }
 }
 
-pub struct MatchRanked {
-    pub base: Match,
+pub struct MatchRanked<T> {
+    pub base: T,
     pub current_league: League,
     pub cached_league: Option<League>,
 }
 
-impl MatchRanked {
+impl<T> MatchRanked<T> {
     /// Calculate the gain/loss of LP between the cached value and the new match data.
     /// Returns a positive number for LP gain, negative for LP loss, or None if data is missing.
     pub fn calculate_league_points_difference(&self, won: bool) -> Option<i16> {

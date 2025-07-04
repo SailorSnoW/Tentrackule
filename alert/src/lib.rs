@@ -44,7 +44,7 @@ impl QueueTyped<lol_match::QueueType> for lol_match::Match {
     }
 }
 
-impl QueueTyped<lol_match::QueueType> for lol_match::MatchRanked {
+impl QueueTyped<lol_match::QueueType> for lol_match::MatchRanked<lol_match::Match> {
     fn queue_type(&self) -> lol_match::QueueType {
         self.base.queue_type()
     }
@@ -53,5 +53,11 @@ impl QueueTyped<lol_match::QueueType> for lol_match::MatchRanked {
 impl QueueTyped<tft_match::QueueType> for tft_match::Match {
     fn queue_type(&self) -> tft_match::QueueType {
         self.queue_type()
+    }
+}
+
+impl QueueTyped<tft_match::QueueType> for lol_match::MatchRanked<tft_match::Match> {
+    fn queue_type(&self) -> tft_match::QueueType {
+        self.base.queue_type()
     }
 }

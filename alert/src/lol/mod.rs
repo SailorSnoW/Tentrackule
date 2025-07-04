@@ -27,7 +27,7 @@ impl TryIntoAlert for Match {
     }
 }
 
-impl TryIntoAlert for MatchRanked {
+impl TryIntoAlert for MatchRanked<Match> {
     fn try_into_alert(&self, account: &Account) -> Result<Alert, AlertCreationError> {
         let focused_participant = self
             .base
@@ -83,7 +83,7 @@ fn base(
 
 fn solo_duo_ranked_alert(
     focused_participant: &MatchParticipant,
-    match_data: &MatchRanked,
+    match_data: &MatchRanked<Match>,
 ) -> CreateEmbed {
     let author = CreateEmbedAuthor::new("[LoL] Solo/Duo Queue")
         .icon_url(focused_participant.to_profile_icon_picture_url());
@@ -92,14 +92,17 @@ fn solo_duo_ranked_alert(
 
 fn flex_ranked_alert(
     focused_participant: &MatchParticipant,
-    match_data: &MatchRanked,
+    match_data: &MatchRanked<Match>,
 ) -> CreateEmbed {
     let author = CreateEmbedAuthor::new("[LoL] Flex Queue")
         .icon_url(focused_participant.to_profile_icon_picture_url());
     ranked_alert(focused_participant, match_data).author(author)
 }
 
-fn ranked_alert(focused_participant: &MatchParticipant, match_data: &MatchRanked) -> CreateEmbed {
+fn ranked_alert(
+    focused_participant: &MatchParticipant,
+    match_data: &MatchRanked<Match>,
+) -> CreateEmbed {
     let mut embed = base(focused_participant, &match_data.base, true)
         .description(format!(
             "**{}** just {} a ranked game !",
