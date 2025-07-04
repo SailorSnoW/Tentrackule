@@ -3,6 +3,7 @@
 use poise::serenity_prelude::ChannelType;
 use tentrackule_shared::{Account, Region, UnifiedQueueType, lol_match};
 use tracing::{debug, info};
+use uuid::Uuid;
 
 use super::{Context, Error, serenity};
 
@@ -69,8 +70,9 @@ pub async fn track(
             .await?
             .puuid
     } else {
-        String::new()
+        None
     };
+
     debug!("[CMD] fetching TFT client PUUID for {}#{}", game_name, tag);
     let puuid_tft = if let Some(tft_client) = ctx.data().account_apis.tft.clone() {
         tft_client
@@ -78,10 +80,11 @@ pub async fn track(
             .await?
             .puuid
     } else {
-        String::new()
+        None
     };
 
     let cached_account = Account {
+        id: Uuid::new_v4(),
         puuid: puuid_lol,
         puuid_tft,
         game_name: game_name.clone(),

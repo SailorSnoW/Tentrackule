@@ -34,6 +34,10 @@ pub trait MatchCreationTime {
     fn game_creation(&self) -> u128;
 }
 
+pub trait WithPuuid {
+    fn puuid_of(account: &Account) -> String;
+}
+
 #[async_trait]
 pub trait OnNewMatch<Api, Match> {
     fn alert_dispatcher(&self) -> &DiscordAlertDispatcher<SharedDatabase>;
@@ -56,7 +60,7 @@ pub struct ResultPoller<Api, Match> {
 
 impl<Api, Match> ResultPoller<Api, Match>
 where
-    Self: 'static + OnNewMatch<Api, Match>,
+    Self: 'static + OnNewMatch<Api, Match> + WithPuuid,
     Api: MatchApi<Match>,
     Match: MatchCreationTime + Send + Sync,
 {
@@ -106,11 +110,14 @@ where
             .await;
     }
 
-    async fn process_account(&self, account: &Account) -> Result<(), ResultPollerError> {
+    async fn process_account(&self, account: &Account) -> Result<(), ResultPollerError>
+    where
+        Self: WithPuuid,
+    {
         debug!("checking {}#{}", account.game_name, account.tag_line);
         let last_match_id = match self
             .api
-            .get_last_match_id(account.puuid.clone(), account.region)
+            .get_last_match_id(Self::puuid_of(account).clone(), account.region)
             .await
             .map_err(ResultPollerError::RiotApiError)?
         {
@@ -131,7 +138,7 @@ where
             last_match_id
         );
         self.cache
-            .set_last_match_id(account.puuid.clone(), last_match_id.clone())
+            .set_last_match_id(Self::puuid_of(account).clone(), last_match_id.clone())
             .await
             .map_err(ResultPollerError::CacheError)?;
 

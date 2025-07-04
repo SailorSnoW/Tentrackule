@@ -4,7 +4,7 @@
 //! sent by the Discord bot when a tracked game finishes.
 
 use poise::serenity_prelude::CreateEmbed;
-use tentrackule_shared::{lol_match, tft_match, traits::QueueKind};
+use tentrackule_shared::{Account, lol_match, tft_match, traits::QueueKind};
 use thiserror::Error;
 
 pub mod alert_dispatcher;
@@ -19,7 +19,7 @@ pub use message_sender::MessageSender;
 #[derive(Error, Debug)]
 pub enum AlertCreationError {
     #[error("The specified PUUID focus {puuid:?} isn't part of the match (likely unexpected !).")]
-    PuuidNotInMatch { puuid: String },
+    PuuidNotInMatch { puuid: Option<String> },
     #[error("Tried to convert an unsupported queue ID into an Alert: {queue_id}.")]
     UnsupportedQueueType { queue_id: u16 },
 }
@@ -30,7 +30,7 @@ pub type Alert = CreateEmbed;
 /// Types implementing this trait can produce an [`Alert`] for a given player.
 pub trait TryIntoAlert {
     /// Convert the value into an [`Alert`].
-    fn try_into_alert(&self, puuid_focus: &str) -> Result<Alert, AlertCreationError>;
+    fn try_into_alert(&self, account: &Account) -> Result<Alert, AlertCreationError>;
 }
 
 /// Types that expose the queue type associated with them.

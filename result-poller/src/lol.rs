@@ -9,9 +9,15 @@ use tentrackule_shared::{
 };
 use tracing::{debug, error};
 
-use crate::{MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError};
+use crate::{MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError, WithPuuid};
 
 pub type LolResultPoller = ResultPoller<LolApiClient, Match>;
+
+impl WithPuuid for LolResultPoller {
+    fn puuid_of(account: &Account) -> String {
+        account.puuid.clone().unwrap_or_default()
+    }
+}
 
 #[async_trait]
 impl OnNewMatch<LolApiClient, Match> for LolResultPoller {
@@ -45,7 +51,7 @@ impl OnNewMatch<LolApiClient, Match> for LolResultPoller {
                     match_ranked.current_league, account.game_name, account.tag_line
                 );
                 self.cache
-                    .set_league_for(account.puuid.clone(), match_ranked.current_league.clone())
+                    .set_league_for(account.id, match_ranked.current_league.clone())
                     .await
                     .map_err(ResultPollerError::CacheError)?;
 
@@ -54,7 +60,7 @@ impl OnNewMatch<LolApiClient, Match> for LolResultPoller {
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
-                    .dispatch_alert(&account.puuid, match_ranked)
+                    .dispatch_alert(&account, match_ranked)
                     .await;
 
                 Ok(())
@@ -65,7 +71,7 @@ impl OnNewMatch<LolApiClient, Match> for LolResultPoller {
                     account.game_name, account.tag_line
                 );
                 self.alert_dispatcher
-                    .dispatch_alert(&account.puuid, match_data)
+                    .dispatch_alert(account, match_data)
                     .await;
                 Ok(())
             }

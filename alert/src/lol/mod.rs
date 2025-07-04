@@ -2,6 +2,7 @@
 
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use tentrackule_shared::{
+    Account,
     lol_match::{Match, MatchParticipant, MatchRanked, QueueType},
     traits::api::{LeaguePoints, LeagueRank},
 };
@@ -9,12 +10,12 @@ use tentrackule_shared::{
 use crate::{Alert, AlertCreationError, TryIntoAlert};
 
 impl TryIntoAlert for Match {
-    fn try_into_alert(&self, puuid_focus: &str) -> Result<Alert, AlertCreationError> {
-        let focused_participant =
-            self.participant(puuid_focus)
-                .ok_or_else(|| AlertCreationError::PuuidNotInMatch {
-                    puuid: puuid_focus.to_string(),
-                })?;
+    fn try_into_alert(&self, account: &Account) -> Result<Alert, AlertCreationError> {
+        let focused_participant = self
+            .participant(&account.puuid.clone().unwrap_or_default())
+            .ok_or_else(|| AlertCreationError::PuuidNotInMatch {
+                puuid: account.puuid.clone(),
+            })?;
 
         match self.queue_type() {
             QueueType::NormalDraft => Ok(draft_normal_alert(focused_participant, self)),
@@ -27,12 +28,13 @@ impl TryIntoAlert for Match {
 }
 
 impl TryIntoAlert for MatchRanked {
-    fn try_into_alert(&self, puuid_focus: &str) -> Result<Alert, AlertCreationError> {
-        let focused_participant = self.base.participant(puuid_focus).ok_or_else(|| {
-            AlertCreationError::PuuidNotInMatch {
-                puuid: puuid_focus.to_string(),
-            }
-        })?;
+    fn try_into_alert(&self, account: &Account) -> Result<Alert, AlertCreationError> {
+        let focused_participant = self
+            .base
+            .participant(&account.puuid.clone().unwrap_or_default())
+            .ok_or_else(|| AlertCreationError::PuuidNotInMatch {
+                puuid: account.puuid.clone(),
+            })?;
 
         match self.base.queue_type() {
             QueueType::Flex => Ok(flex_ranked_alert(focused_participant, self)),

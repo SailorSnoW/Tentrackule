@@ -2,8 +2,9 @@ use async_trait::async_trait;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use std::fmt::Debug;
 use std::{collections::HashMap, error::Error as ErrorT};
+use uuid::Uuid;
 
-use crate::{Account, League, UnifiedQueueType};
+use crate::{Account, League, Region, UnifiedQueueType};
 
 pub type CachedSourceError = Box<dyn ErrorT + Send + Sync>;
 
@@ -15,11 +16,11 @@ pub trait QueueKind: ToString + Send + Sync {
 pub trait CachedLeagueSource {
     async fn get_league_for(
         &self,
-        puuid: String,
+        id: Uuid,
         queue_type: &dyn QueueKind,
     ) -> Result<Option<League>, CachedSourceError>;
 
-    async fn set_league_for(&self, puuid: String, league: League) -> Result<(), CachedSourceError>;
+    async fn set_league_for(&self, id: Uuid, league: League) -> Result<(), CachedSourceError>;
 }
 
 #[async_trait]
@@ -58,11 +59,7 @@ pub trait CachedAccountSource: Send + Sync + Debug {
         account: Account,
         guild_id: GuildId,
     ) -> Result<(), CachedSourceError>;
-    async fn remove_account(
-        &self,
-        puuid: String,
-        guild_id: GuildId,
-    ) -> Result<(), CachedSourceError>;
+    async fn remove_account(&self, id: Uuid, guild_id: GuildId) -> Result<(), CachedSourceError>;
 
     async fn set_last_match_id(
         &self,
@@ -72,13 +69,20 @@ pub trait CachedAccountSource: Send + Sync + Debug {
 
     /// Get all accounts from the cache.
     async fn get_all_accounts(&self) -> Result<Vec<Account>, CachedSourceError>;
+
+    async fn get_account_id(
+        &self,
+        game_name: String,
+        tag_line: String,
+        region: Region,
+    ) -> Result<Option<Uuid>, CachedSourceError>;
 }
 
 #[async_trait]
 pub trait CachedAccountGuildSource {
     async fn get_guilds_for(
         &self,
-        puuid: String,
+        id: Uuid,
     ) -> Result<HashMap<GuildId, Option<ChannelId>>, CachedSourceError>;
 
     async fn get_accounts_for(&self, guild_id: GuildId) -> Result<Vec<Account>, CachedSourceError>;

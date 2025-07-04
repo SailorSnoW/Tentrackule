@@ -10,6 +10,7 @@ use traits::{
     QueueKind,
     api::{LeaguePoints, LeagueQueueType, LeagueRank},
 };
+use uuid::Uuid;
 
 pub mod errors;
 pub mod lol_match;
@@ -148,8 +149,9 @@ impl QueueKind for UnifiedQueueType {
 /// Representation of an account tracked by the bot stored in the database.
 #[derive(Debug, Clone)]
 pub struct Account {
-    pub puuid: String,
-    pub puuid_tft: String,
+    pub id: Uuid,
+    pub puuid: Option<String>,
+    pub puuid_tft: Option<String>,
     pub game_name: String,
     pub tag_line: String,
     pub region: Region,

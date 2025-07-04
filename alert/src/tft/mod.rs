@@ -1,15 +1,18 @@
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
-use tentrackule_shared::tft_match::{Match, Participant, QueueType, UnitsFilter};
+use tentrackule_shared::{
+    Account,
+    tft_match::{Match, Participant, QueueType, UnitsFilter},
+};
 
 use crate::{Alert, AlertCreationError, TryIntoAlert};
 
 impl TryIntoAlert for Match {
-    fn try_into_alert(&self, puuid_focus: &str) -> Result<Alert, AlertCreationError> {
-        let focused_participant =
-            self.participant(puuid_focus)
-                .ok_or_else(|| AlertCreationError::PuuidNotInMatch {
-                    puuid: puuid_focus.to_string(),
-                })?;
+    fn try_into_alert(&self, account: &Account) -> Result<Alert, AlertCreationError> {
+        let focused_participant = self
+            .participant(&account.puuid.clone().unwrap_or_default())
+            .ok_or_else(|| AlertCreationError::PuuidNotInMatch {
+                puuid: account.puuid.clone(),
+            })?;
 
         match self.queue_type() {
             QueueType::Normal => Ok(normal_alert(self, focused_participant)),

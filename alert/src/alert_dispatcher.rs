@@ -4,15 +4,19 @@ use super::TryIntoAlert;
 use async_trait::async_trait;
 use message_sender::MessageSender;
 use poise::serenity_prelude::{ChannelId, CreateMessage, GuildId, Http};
-use tentrackule_shared::traits::{CachedAccountGuildSource, CachedSettingSource, QueueKind};
+use tentrackule_shared::{
+    Account,
+    traits::{CachedAccountGuildSource, CachedSettingSource, QueueKind},
+};
 use tracing::{error, warn};
+use uuid::Uuid;
 
 use super::*;
 
 /// Abstraction for dispatching alert messages to Discord.
 #[async_trait]
 pub trait AlertDispatch {
-    async fn dispatch_alert<T, U>(&self, puuid: &str, match_data: T)
+    async fn dispatch_alert<T, U>(&self, account: &Account, match_data: T)
     where
         T: TryIntoAlert + QueueTyped<U> + Send + Sync,
         U: QueueKind;
@@ -39,8 +43,8 @@ where
 
     /// Retrieve the list of guilds tracking the specified player along with
     /// their configured alert channel, if any.
-    async fn get_guilds_for_account(&self, puuid: String) -> HashMap<GuildId, Option<ChannelId>> {
-        match self.db.get_guilds_for(puuid).await {
+    async fn get_guilds_for_account(&self, id: Uuid) -> HashMap<GuildId, Option<ChannelId>> {
+        match self.db.get_guilds_for(id).await {
             Ok(x) => x,
             Err(e) => {
                 error!("DB error while getting guilds for account: {}", e);
@@ -56,12 +60,12 @@ where
     S: MessageSender,
     C: CachedAccountGuildSource + CachedSettingSource + Send + Sync,
 {
-    async fn dispatch_alert<T, U>(&self, puuid: &str, match_data: T)
+    async fn dispatch_alert<T, U>(&self, account: &Account, match_data: T)
     where
         T: TryIntoAlert + QueueTyped<U> + Send + Sync,
         U: QueueKind,
     {
-        let alert = match match_data.try_into_alert(puuid) {
+        let alert = match match_data.try_into_alert(account) {
             Ok(alert) => alert,
             Err(reason) => {
                 error!("failed to build alert: {}", reason);
@@ -71,7 +75,7 @@ where
 
         // First, we get all the guilds where the player is tracked with channel ID where to send
         // the alert.
-        let guilds = self.get_guilds_for_account(puuid.to_string()).await;
+        let guilds = self.get_guilds_for_account(account.id).await;
 
         let queue_type = match_data.queue_type();
 
@@ -185,7 +189,7 @@ mod tests {
     impl CachedAccountGuildSource for DummyCache {
         async fn get_guilds_for(
             &self,
-            _puuid: String,
+            _id: Uuid,
         ) -> Result<HashMap<GuildId, Option<ChannelId>>, CachedSourceError> {
             Ok(self.guilds.clone())
         }
@@ -207,7 +211,7 @@ mod tests {
     impl CachedAccountGuildSource for DummyCacheWithQueues {
         async fn get_guilds_for(
             &self,
-            _puuid: String,
+            _id: Uuid,
         ) -> Result<HashMap<GuildId, Option<ChannelId>>, CachedSourceError> {
             Ok(self.guilds.clone())
         }

@@ -7,9 +7,15 @@ use tentrackule_shared::{
     tft_match::{Match, QueueType},
 };
 
-use crate::{MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError};
+use crate::{MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError, WithPuuid};
 
 pub type TftResultPoller = ResultPoller<TftApiClient, Match>;
+
+impl WithPuuid for TftResultPoller {
+    fn puuid_of(account: &Account) -> String {
+        account.puuid_tft.clone().unwrap_or_default()
+    }
+}
 
 #[async_trait]
 impl OnNewMatch<TftApiClient, Match> for TftResultPoller {
@@ -25,7 +31,7 @@ impl OnNewMatch<TftApiClient, Match> for TftResultPoller {
         match match_data.queue_type() {
             QueueType::Normal => {
                 self.alert_dispatcher()
-                    .dispatch_alert(&account.puuid, match_data)
+                    .dispatch_alert(account, match_data)
                     .await;
                 Ok(())
             }

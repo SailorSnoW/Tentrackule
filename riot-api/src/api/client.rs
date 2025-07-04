@@ -15,6 +15,7 @@ use tentrackule_shared::{
     Account, Region,
     traits::api::{AccountApi, ApiError, ApiRequest},
 };
+use uuid::Uuid;
 
 use crate::types::RiotApiError;
 
@@ -115,8 +116,9 @@ pub struct AccountDto {
 impl From<AccountDto> for Account {
     fn from(value: AccountDto) -> Self {
         Self {
-            puuid: value.puuid,
-            puuid_tft: String::new(),
+            id: Uuid::new_v4(),
+            puuid: Some(value.puuid),
+            puuid_tft: None,
             game_name: value.game_name.unwrap(),
             tag_line: value.tag_line.unwrap(),
             region: Region::Euw,
@@ -172,7 +174,7 @@ mod tests {
         };
 
         let account: Account = dto.clone().into();
-        assert_eq!(account.puuid, dto.puuid);
+        assert_eq!(account.puuid.unwrap(), dto.puuid);
         assert_eq!(account.game_name, "Name".to_string());
         assert_eq!(account.tag_line, "Tag".to_string());
     }

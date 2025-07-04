@@ -10,7 +10,7 @@ use migrations::DbMigration;
 use poise::serenity_prelude::{ChannelId, GuildId};
 use rusqlite::{Connection, OptionalExtension, params};
 use tentrackule_shared::{
-    Account, League,
+    Account, League, Region,
     traits::{
         CacheFull, CachedAccountGuildSource, CachedAccountSource, CachedLeagueSource,
         CachedSettingSource, CachedSourceError, QueueKind,
@@ -18,6 +18,7 @@ use tentrackule_shared::{
 };
 use tokio::sync::{Mutex, OnceCell};
 use tracing::{debug, info};
+use uuid::Uuid;
 
 mod migrations;
 
@@ -124,47 +125,47 @@ impl CachedAccountSource for SharedDatabase {
         )?;
 
         tx.execute(
-            "INSERT INTO accounts (puuid, puuid_tft, game_name, tag_line, region, last_match_id)\n                VALUES (?1, ?2, ?3, ?4, ?5, '')\n                ON CONFLICT(puuid) DO UPDATE SET\n                    puuid_tft = excluded.puuid_tft,\n                    game_name = excluded.game_name,\n                    tag_line = excluded.tag_line,\n                    region = excluded.region",
+            "INSERT INTO accounts (id, puuid, puuid_tft, game_name, tag_line, region, last_match_id)\n                VALUES (?1, ?2, ?3, ?4, ?5, ?6, '')\n            ON CONFLICT(puuid) DO UPDATE SET\n                    puuid_tft = excluded.puuid_tft,\n                    game_name = excluded.game_name,\n                    tag_line = excluded.tag_line,\n                    region = excluded.region",
             [
-                account.puuid.clone(),
-                account.puuid_tft.clone(),
+                account.id.to_string(),
+                account.puuid.clone().unwrap_or_default(),
+                account.puuid_tft.clone().unwrap_or_default(),
                 account.game_name,
                 account.tag_line,
-                account.region.into(),
+                String::from(account.region),
             ],
         )?;
 
         tx.execute(
-            "INSERT OR IGNORE INTO account_guilds (puuid, guild_id) VALUES (?1, ?2)",
-            params![account.puuid, guild_id_u64],
+            "INSERT OR IGNORE INTO account_guilds (account_id, guild_id) VALUES (?1, ?2)",
+            params![account.id.to_string(), guild_id_u64],
         )?;
 
         tx.commit().map_err(|e| e.into())
     }
 
-    async fn remove_account(
-        &self,
-        puuid: String,
-        guild_id: GuildId,
-    ) -> Result<(), CachedSourceError> {
+    async fn remove_account(&self, id: Uuid, guild_id: GuildId) -> Result<(), CachedSourceError> {
         let guild_id_u64: u64 = guild_id.into();
 
         let db = self.conn.lock().await;
 
         db.execute(
-            "DELETE FROM account_guilds WHERE puuid = ?1 AND guild_id = ?2",
-            params![puuid, guild_id_u64],
+            "DELETE FROM account_guilds WHERE account_id = ?1 AND guild_id = ?2",
+            params![id.to_string(), guild_id_u64],
         )?;
 
         let remaining: i64 = db.query_row(
-            "SELECT COUNT(*) FROM account_guilds WHERE puuid = ?1",
-            [puuid.clone()],
+            "SELECT COUNT(*) FROM account_guilds WHERE account_id = ?1",
+            [id.to_string()],
             |row| row.get(0),
         )?;
 
         if remaining == 0 {
-            db.execute("DELETE FROM leagues WHERE puuid = ?1", [puuid.clone()])?;
-            db.execute("DELETE FROM accounts WHERE puuid = ?1", [puuid])?;
+            db.execute(
+                "DELETE FROM leagues WHERE account_id = ?1",
+                [id.to_string()],
+            )?;
+            db.execute("DELETE FROM accounts WHERE id = ?1", [id.to_string()])?;
         }
 
         Ok(())
@@ -189,25 +190,45 @@ impl CachedAccountSource for SharedDatabase {
         let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
-            "SELECT puuid, puuid_tft, game_name, tag_line, region, last_match_id FROM accounts",
+            "SELECT id, puuid, puuid_tft, game_name, tag_line, region, last_match_id FROM accounts",
         )?;
 
         let rows = stmt.query_map([], |row| {
             Ok(Account {
-                puuid: row.get(0)?,
-                puuid_tft: row.get(1)?,
-                game_name: row.get(2)?,
-                tag_line: row.get(3)?,
+                id: Uuid::parse_str(row.get::<_, String>(0)?.as_str()).unwrap(),
+                puuid: row.get(1)?,
+                puuid_tft: row.get(2)?,
+                game_name: row.get(3)?,
+                tag_line: row.get(4)?,
                 region: {
-                    let s: String = row.get(4)?;
+                    let s: String = row.get(5)?;
                     s.try_into().unwrap()
                 },
-                last_match_id: row.get(5)?,
+                last_match_id: row.get(6)?,
             })
         })?;
 
         rows.collect::<Result<Vec<_>, _>>()
             .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+    }
+
+    async fn get_account_id(
+        &self,
+        game_name: String,
+        tag_line: String,
+        region: Region,
+    ) -> Result<Option<Uuid>, CachedSourceError> {
+        let db = self.conn.lock().await;
+
+        let maybe_id: Option<String> = db
+            .query_row(
+                "SELECT id FROM accounts WHERE game_name = ?1 AND tag_line = ?2 AND region = ?3",
+                params![game_name, tag_line, String::from(region)],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        Ok(maybe_id.and_then(|s| Uuid::parse_str(&s).ok()))
     }
 }
 
@@ -215,7 +236,7 @@ impl CachedAccountSource for SharedDatabase {
 impl CachedAccountGuildSource for SharedDatabase {
     async fn get_guilds_for(
         &self,
-        puuid: String,
+        id: Uuid,
     ) -> Result<HashMap<GuildId, Option<ChannelId>>, CachedSourceError> {
         let db = self.conn.lock().await;
 
@@ -223,10 +244,10 @@ impl CachedAccountGuildSource for SharedDatabase {
             "SELECT gs.guild_id, gs.alert_channel_id
             FROM account_guilds ag
             LEFT JOIN guild_settings gs ON ag.guild_id = gs.guild_id
-            WHERE ag.puuid = ?",
+            WHERE ag.account_id = ?",
         )?;
 
-        let rows = stmt.query_map([puuid], |row| {
+        let rows = stmt.query_map([id.to_string()], |row| {
             let guild_id: u64 = row.get(0)?;
             let alert_channel_id: Option<u64> = row.get(1)?;
             Ok((guild_id, alert_channel_id))
@@ -247,23 +268,24 @@ impl CachedAccountGuildSource for SharedDatabase {
         let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
-            "SELECT a.puuid, a.puuid_tft, a.game_name, a.tag_line, a.region, a.last_match_id
+            "SELECT a.id, a.puuid, a.puuid_tft, a.game_name, a.tag_line, a.region, a.last_match_id
             FROM accounts a
-            INNER JOIN account_guilds ag ON a.puuid = ag.puuid
+            INNER JOIN account_guilds ag ON a.id = ag.account_id
             WHERE ag.guild_id = ?",
         )?;
 
         let rows = stmt.query_map(params![guild_id_str], |row| {
             Ok(Account {
-                puuid: row.get(0)?,
-                puuid_tft: row.get(1)?,
-                game_name: row.get(2)?,
-                tag_line: row.get(3)?,
+                id: Uuid::parse_str(row.get::<_, String>(0)?.as_str()).unwrap(),
+                puuid: row.get(1)?,
+                puuid_tft: row.get(2)?,
+                game_name: row.get(3)?,
+                tag_line: row.get(4)?,
                 region: {
-                    let s: String = row.get(4)?;
+                    let s: String = row.get(5)?;
                     s.try_into().unwrap()
                 },
-                last_match_id: row.get(5)?,
+                last_match_id: row.get(6)?,
             })
         })?;
 
@@ -276,14 +298,14 @@ impl CachedAccountGuildSource for SharedDatabase {
 impl CachedLeagueSource for SharedDatabase {
     async fn get_league_for(
         &self,
-        puuid: String,
+        id: Uuid,
         queue_type: &dyn QueueKind,
     ) -> Result<Option<League>, Box<dyn Error + Send + Sync>> {
         let db = self.conn.lock().await;
 
         db.query_row(
-            "SELECT points, rank, tier, wins, losses, queue_type FROM leagues WHERE puuid = ?1 AND queue_type = ?2",
-            params![puuid, queue_type.to_string()],
+            "SELECT points, rank, tier, wins, losses, queue_type FROM leagues WHERE account_id = ?1 AND queue_type = ?2",
+            params![id.to_string(), queue_type.to_string()],
             |row| {
                 let rank: Option<String> = row.get(1)?;
                 let tier: Option<String> = row.get(2)?;
@@ -303,14 +325,14 @@ impl CachedLeagueSource for SharedDatabase {
 
     async fn set_league_for(
         &self,
-        puuid: String,
+        id: Uuid,
         league: League,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db = self.conn.lock().await;
 
         db.execute(
-            "INSERT OR REPLACE INTO leagues (puuid, queue_type, points, wins, losses, rank, tier) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            params![puuid, league.queue_type.as_str(), league.league_points, league.wins, league.losses, league.rank, league.tier],
+            "INSERT OR REPLACE INTO leagues (account_id, queue_type, points, wins, losses, rank, tier) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            params![id.to_string(), league.queue_type.as_str(), league.league_points, league.wins, league.losses, league.rank, league.tier],
         )?;
         Ok(())
     }
@@ -403,6 +425,8 @@ impl SharedDatabase {
                 migrations::V4::do_migration(&db);
                 migrations::V5::do_migration(&db);
                 migrations::V6::do_migration(&db);
+                migrations::V7::do_migration(&db);
+                migrations::V8::do_migration(&db);
 
                 info!("database ready");
             })
