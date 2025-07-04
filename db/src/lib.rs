@@ -230,6 +230,36 @@ impl CachedAccountSource for SharedDatabase {
 
         Ok(maybe_id.and_then(|s| Uuid::parse_str(&s).ok()))
     }
+
+    async fn get_account_by_puuid(
+        &self,
+        puuid: String,
+    ) -> Result<Option<Account>, CachedSourceError> {
+        let db = self.conn.lock().await;
+
+        let mut stmt = db.prepare(
+            "SELECT id, puuid, puuid_tft, game_name, tag_line, region, last_match_id FROM accounts WHERE puuid = ?1 OR puuid_tft = ?1",
+        )?;
+
+        let account = stmt
+            .query_row([puuid], |row| {
+                Ok(Account {
+                    id: Uuid::parse_str(row.get::<_, String>(0)?.as_str()).unwrap(),
+                    puuid: row.get(1)?,
+                    puuid_tft: row.get(2)?,
+                    game_name: row.get(3)?,
+                    tag_line: row.get(4)?,
+                    region: {
+                        let s: String = row.get(5)?;
+                        s.try_into().unwrap()
+                    },
+                    last_match_id: row.get(6)?,
+                })
+            })
+            .optional()?;
+
+        Ok(account)
+    }
 }
 
 #[async_trait]

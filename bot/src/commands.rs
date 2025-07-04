@@ -74,7 +74,6 @@ pub async fn track(
     } else {
         None
     };
-
     debug!("[CMD] fetching TFT client PUUID for {}#{}", game_name, tag);
     let puuid_tft = if let Some(tft_client) = ctx.data().account_apis.tft.clone() {
         Some(
@@ -87,14 +86,40 @@ pub async fn track(
         None
     };
 
-    let cached_account = Account {
-        id: Uuid::new_v4(),
-        puuid: puuid_lol,
-        puuid_tft,
-        game_name: game_name.clone(),
-        tag_line: tag.clone(),
-        region,
-        last_match_id: Default::default(),
+    // Try to reuse an existing account if any PUUID already exists in the cache
+    let mut existing: Option<Account> = None;
+    if let Some(ref p) = puuid_lol {
+        existing = ctx.data().db.get_account_by_puuid(p.clone()).await?;
+    }
+    if existing.is_none() {
+        if let Some(ref p) = puuid_tft {
+            existing = ctx.data().db.get_account_by_puuid(p.clone()).await?;
+        }
+    }
+
+    let cached_account = if let Some(acc) = existing {
+        // If the account was already kinda existing with the same puuid, we just re-cach
+        // other informations.
+        Account {
+            id: acc.id,
+            puuid: puuid_lol,
+            puuid_tft,
+            game_name: game_name.clone(),
+            tag_line: tag.clone(),
+            region,
+            // keep last_match_id from DB so we don't retrigger old games
+            last_match_id: acc.last_match_id,
+        }
+    } else {
+        Account {
+            id: Uuid::new_v4(),
+            puuid: puuid_lol,
+            puuid_tft,
+            game_name: game_name.clone(),
+            tag_line: tag.clone(),
+            region,
+            last_match_id: Default::default(),
+        }
     };
 
     debug!("[CMD] storing tracking data in DB");

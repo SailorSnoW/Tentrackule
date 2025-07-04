@@ -82,6 +82,11 @@ pub trait CachedAccountSource: Send + Sync + Debug {
         tag_line: String,
         region: Region,
     ) -> Result<Option<Uuid>, CachedSourceError>;
+
+    async fn get_account_by_puuid(
+        &self,
+        puuid: String,
+    ) -> Result<Option<Account>, CachedSourceError>;
 }
 
 #[async_trait]
