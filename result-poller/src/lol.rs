@@ -2,20 +2,41 @@ use async_trait::async_trait;
 use tentrackule_alert::{AlertDispatch, alert_dispatcher::DiscordAlertDispatcher};
 use tentrackule_db::SharedDatabase;
 use tentrackule_riot_api::api::lol::LolApiClient;
-use tentrackule_shared::traits::CachedLeagueSource;
+use tentrackule_shared::traits::{CachedAccountSource, CachedLeagueSource, CachedSourceError};
 use tentrackule_shared::{
     Account,
     lol_match::{Match, QueueType},
 };
 use tracing::{debug, error};
 
-use crate::{MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError, WithPuuid};
+use crate::{
+    MatchCreationTime, OnNewMatch, ResultPoller, ResultPollerError, WithLastMatchId, WithPuuid,
+};
 
 pub type LolResultPoller = ResultPoller<LolApiClient, Match>;
 
 impl WithPuuid for LolResultPoller {
     fn puuid_of(account: &Account) -> Option<String> {
         account.puuid.clone()
+    }
+}
+
+#[async_trait]
+impl WithLastMatchId for LolResultPoller {
+    fn cache(&self) -> SharedDatabase {
+        self.cache.clone()
+    }
+
+    fn last_match_id(account: &Account) -> Option<String> {
+        account.last_match_id.clone()
+    }
+
+    async fn set_last_match_id(
+        &self,
+        account: &Account,
+        match_id: String,
+    ) -> Result<(), CachedSourceError> {
+        self.cache().set_last_match_id(account.id, match_id).await
     }
 }
 
@@ -46,19 +67,13 @@ impl OnNewMatch<LolApiClient, Match> for LolResultPoller {
                         return Ok(());
                     }
                 };
-                debug!(
-                    "updating league to {:?} for {}#{}",
-                    match_ranked.current_league, account.game_name, account.tag_line
-                );
+                debug!(league = ?match_ranked.current_league, "updating league");
                 self.cache
                     .set_league_for(account.id, match_ranked.current_league.clone())
                     .await
                     .map_err(ResultPollerError::CacheError)?;
 
-                debug!(
-                    "dispatching alert for {}#{}",
-                    account.game_name, account.tag_line
-                );
+                debug!("dispatching alert");
                 self.alert_dispatcher
                     .dispatch_alert(account, match_ranked)
                     .await;
@@ -66,10 +81,7 @@ impl OnNewMatch<LolApiClient, Match> for LolResultPoller {
                 Ok(())
             }
             QueueType::NormalDraft | QueueType::Aram => {
-                debug!(
-                    "dispatching alert for {}#{}",
-                    account.game_name, account.tag_line
-                );
+                debug!("dispatching alert");
                 self.alert_dispatcher
                     .dispatch_alert(account, match_data)
                     .await;

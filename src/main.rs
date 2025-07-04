@@ -38,9 +38,13 @@ async fn main() {
     let alert_dispatcher: DiscordAlertDispatcher<SharedDatabase> =
         DiscordAlertDispatcher::new(bot.client().http.clone(), db.clone());
 
-    let lol_result_poller =
-        LolResultPoller::new(lol_client.clone(), db.clone(), alert_dispatcher.clone());
-    let tft_result_poller = TftResultPoller::new(tft_client.clone(), db, alert_dispatcher);
+    let lol_result_poller = LolResultPoller::new(
+        lol_client.clone(),
+        db.clone(),
+        alert_dispatcher.clone(),
+        "LoL",
+    );
+    let tft_result_poller = TftResultPoller::new(tft_client.clone(), db, alert_dispatcher, "TFT");
 
     lol_client.start_metrics_logging();
     tft_client.start_metrics_logging();

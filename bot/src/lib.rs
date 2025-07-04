@@ -10,7 +10,7 @@ use poise::serenity_prelude as serenity;
 use serenity::*;
 use std::{env, fmt::Debug, sync::Arc};
 use tentrackule_shared::traits::{CacheFull, api::AccountApi};
-use tracing::{error, info};
+use tracing::{Instrument, error, info, info_span};
 
 use handler::event_handler;
 
@@ -63,8 +63,6 @@ impl DiscordBot {
             })
             .build();
         let client_builder = ClientBuilder::new(token, intents).framework(framework);
-
-        info!("initializing bot");
         let client = client_builder
             .await
             .expect("Discord client creation should success.");
@@ -73,11 +71,12 @@ impl DiscordBot {
     }
 
     pub fn start(self) -> tokio::task::JoinHandle<Result<(), serenity::Error>> {
-        tokio::spawn(async move { self.run().await })
+        let span = info_span!("🤖 Discord");
+        tokio::spawn(async move { self.run().await }.instrument(span))
     }
 
     async fn run(mut self) -> Result<(), serenity::Error> {
-        info!("connecting to gateway");
+        info!("Connecting to gateway...");
         if let Err(why) = self.0.start().await {
             error!("connection failed: {why:?}");
             return Err(why);

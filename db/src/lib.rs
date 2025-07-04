@@ -17,7 +17,7 @@ use tentrackule_shared::{
     },
 };
 use tokio::sync::{Mutex, OnceCell};
-use tracing::{debug, info};
+use tracing::{debug, info, instrument};
 use uuid::Uuid;
 
 mod migrations;
@@ -109,6 +109,7 @@ impl CachedSettingSource for SharedDatabase {
 
 #[async_trait]
 impl CachedAccountSource for SharedDatabase {
+    #[instrument("🛢 ", skip_all, fields(op = "insert_account"))]
     async fn insert_account(
         &self,
         account: Account,
@@ -125,7 +126,7 @@ impl CachedAccountSource for SharedDatabase {
         )?;
 
         tx.execute(
-            "INSERT INTO accounts (id, puuid, puuid_tft, game_name, tag_line, region, last_match_id)\n                VALUES (?1, ?2, ?3, ?4, ?5, ?6, '')\n            ON CONFLICT(puuid) DO UPDATE SET\n                    puuid_tft = excluded.puuid_tft,\n                    game_name = excluded.game_name,\n                    tag_line = excluded.tag_line,\n                    region = excluded.region",
+            "INSERT INTO accounts (id, puuid, puuid_tft, game_name, tag_line, region, last_match_id, last_match_id_tft)\n                VALUES (?1, ?2, ?3, ?4, ?5, ?6, '', '')\n            ON CONFLICT(puuid) DO UPDATE SET\n                    puuid_tft = excluded.puuid_tft,\n                    game_name = excluded.game_name,\n                    tag_line = excluded.tag_line,\n                    region = excluded.region",
             [
                 account.id.to_string(),
                 account.puuid.clone().unwrap_or_default(),
@@ -144,6 +145,7 @@ impl CachedAccountSource for SharedDatabase {
         tx.commit().map_err(|e| e.into())
     }
 
+    #[instrument("🛢 ", skip_all, fields(op = "remove_account"))]
     async fn remove_account(&self, id: Uuid, guild_id: GuildId) -> Result<(), CachedSourceError> {
         let guild_id_u64: u64 = guild_id.into();
 
@@ -171,26 +173,39 @@ impl CachedAccountSource for SharedDatabase {
         Ok(())
     }
 
-    async fn set_last_match_id(
+    #[instrument("🛢 ", skip_all, fields(op = "set_last_match_id"))]
+    async fn set_last_match_id(&self, id: Uuid, match_id: String) -> Result<(), CachedSourceError> {
+        let db = self.conn.lock().await;
+
+        db.execute(
+            "UPDATE accounts SET last_match_id = ?1 WHERE id = ?2",
+            [match_id, id.to_string()],
+        )?;
+        Ok(())
+    }
+
+    #[instrument("🛢 ", skip_all, fields(op = "set_last_match_id_tft"))]
+    async fn set_last_match_id_tft(
         &self,
-        puuid: String,
+        id: Uuid,
         match_id: String,
     ) -> Result<(), CachedSourceError> {
         let db = self.conn.lock().await;
 
         db.execute(
-            "UPDATE accounts SET last_match_id = ?1 WHERE puuid = ?2",
-            [match_id, puuid],
+            "UPDATE accounts SET last_match_id_tft = ?1 WHERE id = ?2",
+            [match_id, id.to_string()],
         )?;
         Ok(())
     }
 
     /// Get all accounts from the cache.
+    #[instrument("🛢 ", skip_all, fields(op = "get_all_accounts"))]
     async fn get_all_accounts(&self) -> Result<Vec<Account>, CachedSourceError> {
         let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
-            "SELECT id, puuid, puuid_tft, game_name, tag_line, region, last_match_id FROM accounts",
+            "SELECT id, puuid, puuid_tft, game_name, tag_line, region, last_match_id, last_match_id_tft FROM accounts",
         )?;
 
         let rows = stmt.query_map([], |row| {
@@ -205,6 +220,7 @@ impl CachedAccountSource for SharedDatabase {
                     s.try_into().unwrap()
                 },
                 last_match_id: row.get(6)?,
+                last_match_id_tft: row.get(7)?,
             })
         })?;
 
@@ -212,6 +228,7 @@ impl CachedAccountSource for SharedDatabase {
             .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
 
+    #[instrument("🛢 ", skip_all, fields(op = "get_account_id"))]
     async fn get_account_id(
         &self,
         game_name: String,
@@ -231,6 +248,7 @@ impl CachedAccountSource for SharedDatabase {
         Ok(maybe_id.and_then(|s| Uuid::parse_str(&s).ok()))
     }
 
+    #[instrument("🛢 ", skip_all, fields(op = "get_account_by_puuid"))]
     async fn get_account_by_puuid(
         &self,
         puuid: String,
@@ -238,7 +256,7 @@ impl CachedAccountSource for SharedDatabase {
         let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
-            "SELECT id, puuid, puuid_tft, game_name, tag_line, region, last_match_id FROM accounts WHERE puuid = ?1 OR puuid_tft = ?1",
+            "SELECT id, puuid, puuid_tft, game_name, tag_line, region, last_match_id, last_match_id_tft FROM accounts WHERE puuid = ?1 OR puuid_tft = ?1",
         )?;
 
         let account = stmt
@@ -254,6 +272,7 @@ impl CachedAccountSource for SharedDatabase {
                         s.try_into().unwrap()
                     },
                     last_match_id: row.get(6)?,
+                    last_match_id_tft: row.get(7)?,
                 })
             })
             .optional()?;
@@ -264,6 +283,7 @@ impl CachedAccountSource for SharedDatabase {
 
 #[async_trait]
 impl CachedAccountGuildSource for SharedDatabase {
+    #[instrument("🛢 ", skip_all, fields(op = "get_guilds_for"))]
     async fn get_guilds_for(
         &self,
         id: Uuid,
@@ -292,13 +312,14 @@ impl CachedAccountGuildSource for SharedDatabase {
         Ok(result)
     }
 
+    #[instrument("🛢 ", skip_all, fields(op = "get_accounts_for"))]
     async fn get_accounts_for(&self, guild_id: GuildId) -> Result<Vec<Account>, CachedSourceError> {
         let guild_id_str = guild_id.to_string();
 
         let db = self.conn.lock().await;
 
         let mut stmt = db.prepare(
-            "SELECT a.id, a.puuid, a.puuid_tft, a.game_name, a.tag_line, a.region, a.last_match_id
+            "SELECT a.id, a.puuid, a.puuid_tft, a.game_name, a.tag_line, a.region, a.last_match_id, a.last_match_id_tft
             FROM accounts a
             INNER JOIN account_guilds ag ON a.id = ag.account_id
             WHERE ag.guild_id = ?",
@@ -316,6 +337,7 @@ impl CachedAccountGuildSource for SharedDatabase {
                     s.try_into().unwrap()
                 },
                 last_match_id: row.get(6)?,
+                last_match_id_tft: row.get(7)?,
             })
         })?;
 
@@ -326,6 +348,7 @@ impl CachedAccountGuildSource for SharedDatabase {
 
 #[async_trait]
 impl CachedLeagueSource for SharedDatabase {
+    #[instrument("🛢 ", skip_all, fields(op = "get_league_for"))]
     async fn get_league_for(
         &self,
         id: Uuid,
@@ -353,6 +376,7 @@ impl CachedLeagueSource for SharedDatabase {
         .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
 
+    #[instrument("🛢 ", skip_all, fields(op = "set_league_for"))]
     async fn set_league_for(
         &self,
         id: Uuid,
@@ -378,6 +402,7 @@ impl SharedDatabase {
     }
 
     /// Create a new database from the given connection and initialize schema.
+    #[instrument("🛢 ", skip_all, fields(op = "open_connection"))]
     pub fn from_connection(conn: Connection) -> Self {
         info!("opening SQLite connection");
         Self {
@@ -407,6 +432,7 @@ impl SharedDatabase {
     }
 
     /// Initialize the schemas of the database.
+    #[instrument("🛢 ", skip_all, fields(op = "initialization"))]
     pub async fn init(&self) {
         let _ = self
             .init_once
@@ -431,7 +457,8 @@ impl SharedDatabase {
                         game_name TEXT NOT NULL,
                         tag_line TEXT NOT NULL,
                         region TEXT NOT NULL,
-                        last_match_id TEXT NOT NULL
+                        last_match_id TEXT NOT NULL,
+                        last_match_id_tft TEXT NOT NULL
                     )",
                     [],
                 )
@@ -457,6 +484,7 @@ impl SharedDatabase {
                 migrations::V6::do_migration(&db);
                 migrations::V7::do_migration(&db);
                 migrations::V8::do_migration(&db);
+                migrations::V9::do_migration(&db);
 
                 info!("database ready");
             })

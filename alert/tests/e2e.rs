@@ -41,7 +41,8 @@ fn sample_account_with_puuids(puuid_lol: Option<String>, puuid_tft: Option<Strin
         game_name: "Game".to_string(),
         tag_line: "Tag".to_string(),
         region: Region::Euw,
-        last_match_id: "".to_string(),
+        last_match_id: None,
+        last_match_id_tft: None,
     }
 }
 

@@ -1,9 +1,10 @@
 //! Global event handler for the Discord client.
 
-use tracing::warn;
+use tracing::{instrument, warn};
 
 use super::*;
 
+#[instrument(name = "🤖 Discord", skip_all)]
 pub async fn event_handler(
     ctx: &serenity::Context,
     event: &serenity::FullEvent,

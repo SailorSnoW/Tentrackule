@@ -109,6 +109,7 @@ pub async fn track(
             region,
             // keep last_match_id from DB so we don't retrigger old games
             last_match_id: acc.last_match_id,
+            last_match_id_tft: acc.last_match_id_tft,
         }
     } else {
         Account {
@@ -118,7 +119,8 @@ pub async fn track(
             game_name: game_name.clone(),
             tag_line: tag.clone(),
             region,
-            last_match_id: Default::default(),
+            last_match_id: None,
+            last_match_id_tft: None,
         }
     };
 

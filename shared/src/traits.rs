@@ -67,9 +67,11 @@ pub trait CachedAccountSource: Send + Sync + Debug {
     ) -> Result<(), CachedSourceError>;
     async fn remove_account(&self, id: Uuid, guild_id: GuildId) -> Result<(), CachedSourceError>;
 
-    async fn set_last_match_id(
+    async fn set_last_match_id(&self, id: Uuid, match_id: String) -> Result<(), CachedSourceError>;
+
+    async fn set_last_match_id_tft(
         &self,
-        puuid: String,
+        id: Uuid,
         match_id: String,
     ) -> Result<(), CachedSourceError>;
 

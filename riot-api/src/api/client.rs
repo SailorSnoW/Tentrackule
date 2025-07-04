@@ -15,6 +15,7 @@ use tentrackule_shared::traits::{
     RiotAccountResponse,
     api::{AccountApi, ApiError, ApiRequest},
 };
+use tracing::{Instrument, debug, info_span};
 
 use crate::types::RiotApiError;
 
@@ -24,6 +25,7 @@ use super::metrics::RequestMetrics;
 #[derive(Debug)]
 pub struct ApiClientBase {
     pub client: reqwest::Client,
+    pub name: &'static str,
     pub limiter: RateLimiter<NotKeyed, InMemoryState, DefaultClock>,
     /// Riot API Key
     key: String,
@@ -32,14 +34,15 @@ pub struct ApiClientBase {
 
 impl ApiClientBase {
     /// Create a new client using the provided Riot API key.
-    pub fn new(api_key: String) -> Self {
+    pub fn new(name: &'static str, api_key: String) -> Self {
         let q = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
 
         Self {
             client: reqwest::Client::new(),
+            name,
             limiter: RateLimiter::direct(q),
             key: api_key,
-            metrics: RequestMetrics::new(),
+            metrics: RequestMetrics::new(name),
         }
     }
 }
@@ -47,25 +50,33 @@ impl ApiClientBase {
 #[async_trait]
 impl ApiRequest for ApiClientBase {
     async fn request(&self, path: String) -> Result<Bytes, ApiError> {
-        // Ensure we do not enforce the RIOT API rate limits before doing any request
-        self.limiter.until_ready().await;
-        self.metrics.inc();
+        let span = info_span!("🛰️ ", client = self.name, endpoint = %path);
 
-        let res = self
-            .client
-            .get(path)
-            .header("X-Riot-Token", &self.key)
-            .send()
-            .await
-            .map_err(RiotApiError::Reqwest)?;
-        match res.status() {
-            StatusCode::OK => {
-                res.bytes()
-                    .map_err(|e| RiotApiError::Reqwest(e).into())
-                    .await
+        async {
+            debug!("Waiting for rate-limiter to be ready.");
+            self.limiter.until_ready().await;
+            self.metrics.inc();
+
+            let res = self
+                .client
+                .get(&path)
+                .header("X-Riot-Token", &self.key)
+                .send()
+                .await
+                .map_err(RiotApiError::Reqwest)?;
+
+            match res.status() {
+                StatusCode::OK => {
+                    debug!("Received success response: {:?}", res);
+                    res.bytes()
+                        .map_err(|e| RiotApiError::Reqwest(e).into())
+                        .await
+                }
+                _ => Err(RiotApiError::Status(res.status()).into()),
             }
-            _ => Err(RiotApiError::Status(res.status()).into()),
         }
+        .instrument(span)
+        .await
     }
 }
 
@@ -146,7 +157,7 @@ mod tests {
         }
         let key = env::var("LOL_API_KEY")
             .expect("A LoL Riot API Key must be set in environment to create the API Client.");
-        let client = ApiClientBase::new(key);
+        let client = ApiClientBase::new("name", key);
 
         let bad_url = "ht!tp://invalid-url".to_string(); // incorrect schema
 
@@ -180,9 +191,10 @@ mod tests {
         let quota = Quota::per_minute(nonzero!(100_u32)).allow_burst(nonzero!(20_u32));
         let api = ApiClientBase {
             client,
+            name: "test",
             limiter: RateLimiter::direct(quota),
             key: "KEY".to_string(),
-            metrics: RequestMetrics::new(),
+            metrics: RequestMetrics::new("test"),
         };
 
         let route = format!(

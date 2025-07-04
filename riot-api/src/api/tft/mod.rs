@@ -20,7 +20,7 @@ pub struct TftApiClient(ApiClientBase);
 impl TftApiClient {
     /// Create a new API client using the provided key.
     pub fn new(api_key: String) -> Self {
-        Self(ApiClientBase::new(api_key))
+        Self(ApiClientBase::new("TFT", api_key))
     }
 
     /// Spawn a task logging periodic metrics about requests.
@@ -59,12 +59,6 @@ impl MatchApi<Match> for TftApiClient {
         puuid: String,
         region: Region,
     ) -> Result<Option<String>, ApiError> {
-        tracing::trace!(
-            "[TFT-MATCH-V1 API] get_last_match_id {} in {:?}",
-            puuid,
-            region
-        );
-
         let params = "?start=0&count=1";
         let path = format!(
             "https://{}/tft/match/v1/matches/by-puuid/{}/ids/{}",
@@ -84,8 +78,6 @@ impl MatchApi<Match> for TftApiClient {
         match_id: String,
         region: Region,
     ) -> Result<tft_match::Match, ApiError> {
-        tracing::trace!("[TFT-MATCH-V1 API] get_match {} in {:?}", match_id, region);
-
         let path = format!(
             "https://{}/tft/match/v1/matches/{}",
             region.to_global_endpoint(),

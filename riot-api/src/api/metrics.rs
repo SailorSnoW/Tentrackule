@@ -2,18 +2,22 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
+use tracing::{Instrument, info_span};
+
 /// Simple counter used to log the amount of Riot API requests performed.
 #[derive(Debug)]
 pub struct RequestMetrics {
     start: Instant,
     count: AtomicU64,
+    name: &'static str,
 }
 
 impl RequestMetrics {
-    pub fn new() -> Arc<Self> {
+    pub fn new(name: &'static str) -> Arc<Self> {
         Arc::new(Self {
             start: Instant::now(),
             count: AtomicU64::new(0),
+            name,
         })
     }
 
@@ -25,15 +29,20 @@ impl RequestMetrics {
         let mut interval = tokio::time::interval(Duration::from_secs(60)); // Log per
         // minutes
         loop {
-            interval.tick().await;
-            let total = self.count.load(Ordering::Relaxed);
-            let elapsed_min = self.start.elapsed().as_secs_f64() / 60.0;
-            let avg = if elapsed_min > 0.0 {
-                total as f64 / elapsed_min
-            } else {
-                0.0
-            };
-            tracing::info!("{} requests executed (avg {:.2} req/min)", total, avg);
+            let span = info_span!("📊 ", client = self.name);
+            async {
+                interval.tick().await;
+                let total = self.count.load(Ordering::Relaxed);
+                let elapsed_min = self.start.elapsed().as_secs_f64() / 60.0;
+                let avg = if elapsed_min > 0.0 {
+                    total as f64 / elapsed_min
+                } else {
+                    0.0
+                };
+                tracing::info!("{} requests executed (avg {:.2} req/min)", total, avg);
+            }
+            .instrument(span)
+            .await
         }
     }
 }
@@ -46,7 +55,7 @@ mod tests {
 
     #[test]
     fn inc_increases_count() {
-        let metrics = RequestMetrics::new();
+        let metrics = RequestMetrics::new("test");
         metrics.inc();
         metrics.inc();
 
@@ -58,7 +67,7 @@ mod tests {
     async fn log_loop_runs_once() {
         tokio::time::pause();
 
-        let metrics = RequestMetrics::new();
+        let metrics = RequestMetrics::new("test");
         let cloned = metrics.clone();
         let handle = tokio::spawn(async move { cloned.log_loop().await });
 

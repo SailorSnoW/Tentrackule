@@ -155,7 +155,8 @@ pub struct Account {
     pub game_name: String,
     pub tag_line: String,
     pub region: Region,
-    pub last_match_id: String,
+    pub last_match_id: Option<String>,
+    pub last_match_id_tft: Option<String>,
 }
 
 /// Representation of a league used by the bot which is stored in the database.

@@ -17,7 +17,7 @@ use tentrackule_shared::{
         api::{ApiError, MatchApi},
     },
 };
-use tracing::{debug, error, info, warn};
+use tracing::{Instrument, debug, error, info, info_span, trace, warn};
 
 pub mod lol;
 pub mod tft;
@@ -39,6 +39,18 @@ pub trait WithPuuid {
 }
 
 #[async_trait]
+pub trait WithLastMatchId {
+    fn cache(&self) -> SharedDatabase;
+
+    fn last_match_id(account: &Account) -> Option<String>;
+    async fn set_last_match_id(
+        &self,
+        account_id: &Account,
+        match_id: String,
+    ) -> Result<(), CachedSourceError>;
+}
+
+#[async_trait]
 pub trait OnNewMatch<Api, Match> {
     fn alert_dispatcher(&self) -> &DiscordAlertDispatcher<SharedDatabase>;
 
@@ -55,12 +67,13 @@ pub struct ResultPoller<Api, Match> {
     pub alert_dispatcher: DiscordAlertDispatcher<SharedDatabase>,
     start_time: u128,
     poll_interval: Duration,
+    name: &'static str,
     marker: PhantomData<Match>,
 }
 
 impl<Api, Match> ResultPoller<Api, Match>
 where
-    Self: 'static + OnNewMatch<Api, Match> + WithPuuid,
+    Self: 'static + OnNewMatch<Api, Match> + WithPuuid + WithLastMatchId,
     Api: MatchApi<Match>,
     Match: MatchCreationTime + Send + Sync,
 {
@@ -68,6 +81,7 @@ where
         api: Arc<Api>,
         cache: SharedDatabase,
         alert_dispatcher: DiscordAlertDispatcher<SharedDatabase>,
+        name: &'static str,
     ) -> Self {
         let poll_interval_u64 = env::var("POLL_INTERVAL_SECONDS")
             .ok()
@@ -84,12 +98,13 @@ where
                 .as_millis(),
             poll_interval,
             alert_dispatcher,
+            name,
             marker: Default::default(),
         }
     }
 
     async fn poll_once(&self) {
-        info!("🔄 starting fetch cycle");
+        info!("starting fetch cycle");
 
         let accounts = match self.cache.get_all_accounts().await {
             Ok(accounts) => accounts,
@@ -99,13 +114,17 @@ where
             }
         };
         stream::iter(accounts)
-            .for_each_concurrent(10, |account| async move {
-                if let Err(e) = self.process_account(&account).await {
-                    error!(
-                        "Processing account of {}#{} exited with error: {e}",
-                        account.game_name, account.tag_line
-                    )
+            .for_each_concurrent(10, |account| {
+                let span = info_span!(
+                    "",
+                    user = %format!("{}#{}", account.game_name, account.tag_line)
+                );
+                async move {
+                    if let Err(e) = self.process_account(&account).await {
+                        error!("Processing account exited with error: {e}");
+                    }
                 }
+                .instrument(span)
             })
             .await;
     }
@@ -114,6 +133,7 @@ where
     where
         Self: WithPuuid,
     {
+        info!("Processing account...");
         let puuid = match Self::puuid_of(account).clone() {
             Some(x) => {
                 if x == String::new() {
@@ -123,36 +143,44 @@ where
                 }
             }
             None => {
-                warn!("Player doesn't have a cached puuid, ignoring.");
+                warn!(
+                    poller = self.name,
+                    account = %format!("{}#{}", account.game_name, account.tag_line),
+                    "Player doesn't have a cached puuid, ignoring."
+                );
                 return Ok(());
             }
         };
 
-        debug!("checking {}#{}", account.game_name, account.tag_line);
+        debug!("Fetching most recent match ID");
         let last_match_id = match self
             .api
             .get_last_match_id(puuid.clone(), account.region)
             .await
             .map_err(ResultPollerError::RiotApiError)?
         {
-            Some(id) => id,
+            Some(id) => {
+                debug!("Most recent match ID: {}", id);
+                id
+            }
             None => {
                 warn!("No last match ID found from the API.");
                 return Ok(());
             }
         };
 
-        if last_match_id == account.last_match_id {
-            debug!("{}#{} no new result", account.game_name, account.tag_line);
+        trace!(
+            "Comparing fetched match ID {} with cached match ID {}",
+            last_match_id,
+            Self::last_match_id(account).unwrap_or_default()
+        );
+        if last_match_id == Self::last_match_id(account).unwrap_or_default() {
+            debug!("No new match detected, ignoring.");
             return Ok(());
         }
 
-        debug!(
-            "Detected newer match ID on Riot servers, caching new match {}",
-            last_match_id
-        );
-        self.cache
-            .set_last_match_id(puuid, last_match_id.clone())
+        debug!(new_match_id = %last_match_id, "Detected newer match ID on Riot servers, caching new match");
+        self.set_last_match_id(account, last_match_id.clone())
             .await
             .map_err(ResultPollerError::CacheError)?;
 
@@ -163,7 +191,7 @@ where
             .map_err(ResultPollerError::RiotApiError)?;
 
         if self.start_time > match_data.game_creation() {
-            debug!("This is an old match, alerting ignored.",);
+            debug!("This is an old match, alerting ignored.");
             return Ok(());
         }
 
@@ -171,15 +199,19 @@ where
     }
 
     pub fn start(self) -> tokio::task::JoinHandle<()> {
-        tokio::spawn(async move {
-            info!("Poller started");
+        let span = info_span!("📡 ", poller = self.name);
+        tokio::spawn(
+            async move {
+                info!("Poller started");
 
-            let mut interval = tokio::time::interval(self.poll_interval);
+                let mut interval = tokio::time::interval(self.poll_interval);
 
-            loop {
-                interval.tick().await;
-                self.poll_once().await
+                loop {
+                    interval.tick().await;
+                    self.poll_once().await
+                }
             }
-        })
+            .instrument(span),
+        )
     }
 }

@@ -24,7 +24,7 @@ pub struct LolApiClient(ApiClientBase);
 impl LolApiClient {
     /// Create a new API client using the provided key.
     pub fn new(api_key: String) -> Self {
-        Self(ApiClientBase::new(api_key))
+        Self(ApiClientBase::new("LoL", api_key))
     }
 
     /// Spawn a task logging periodic metrics about requests.
@@ -44,8 +44,6 @@ impl ApiRequest for LolApiClient {
 #[async_trait]
 impl LeagueApi for LolApiClient {
     async fn get_leagues(&self, puuid: String, region: Region) -> Result<Vec<League>, ApiError> {
-        tracing::trace!("[LeagueV4 API] get_league {} in {:?}", puuid, region);
-
         let path = format!(
             "https://{}/lol/league/v4/entries/by-puuid/{}",
             region.to_endpoint(),
@@ -79,8 +77,6 @@ impl MatchApi<Match> for LolApiClient {
         puuid: String,
         region: Region,
     ) -> Result<Option<String>, ApiError> {
-        tracing::trace!("[MatchV5 API] get_last_match_id {} in {:?}", puuid, region);
-
         let params = "?start=0&count=1";
         let path = format!(
             "https://{}/lol/match/v5/matches/by-puuid/{}/ids/{}",
@@ -96,8 +92,6 @@ impl MatchApi<Match> for LolApiClient {
     }
 
     async fn get_match(&self, match_id: String, region: Region) -> Result<Match, ApiError> {
-        tracing::trace!("[MatchV5 API] get_match {} in {:?}", match_id, region);
-
         let path = format!(
             "https://{}/lol/match/v5/matches/{}",
             region.to_global_endpoint(),
