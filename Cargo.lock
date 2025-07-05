@@ -7,7 +7,6 @@ name = "Tentrackule"
 version = "1.2.0"
 dependencies = [
  "dotenv",
- "futures",
  "tentrackule-alert",
  "tentrackule-bot",
  "tentrackule-db",
@@ -2839,7 +2838,6 @@ dependencies = [
  "thiserror 2.0.12",
  "tokio",
  "tracing",
- "uuid",
 ]
 
 [[package]]
@@ -2848,7 +2846,6 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "bytes",
- "dotenv",
  "poise",
  "serde",
  "thiserror 2.0.12",

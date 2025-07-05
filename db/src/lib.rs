@@ -477,7 +477,6 @@ impl SharedDatabase {
                 .unwrap();
 
                 debug!("running migrations");
-                migrations::V2::do_migration(&db);
                 migrations::V3::do_migration(&db);
                 migrations::V4::do_migration(&db);
                 migrations::V5::do_migration(&db);

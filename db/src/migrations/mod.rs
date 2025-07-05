@@ -2,8 +2,6 @@
 
 use rusqlite::Connection;
 
-mod v2;
-pub use v2::V2;
 mod v3;
 pub use v3::V3;
 mod v4;
