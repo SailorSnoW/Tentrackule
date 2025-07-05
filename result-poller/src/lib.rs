@@ -20,6 +20,9 @@ use tentrackule_shared::{
 };
 use tracing::{Instrument, debug, error, info, info_span, trace, warn};
 
+#[macro_use]
+mod macros;
+
 pub mod lol;
 pub mod tft;
 
