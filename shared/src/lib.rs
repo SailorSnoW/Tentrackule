@@ -123,6 +123,35 @@ impl TryFrom<String> for Region {
     }
 }
 
+/// Types that expose the queue type associated with them.
+pub trait QueueTyped {
+    fn queue_type(&self) -> impl QueueKind;
+}
+
+impl QueueTyped for lol_match::Match {
+    fn queue_type(&self) -> impl QueueKind {
+        lol_match::Match::queue_type(self)
+    }
+}
+
+impl QueueTyped for lol_match::MatchRanked<lol_match::Match> {
+    fn queue_type(&self) -> impl QueueKind {
+        self.base.queue_type()
+    }
+}
+
+impl QueueTyped for tft_match::Match {
+    fn queue_type(&self) -> impl QueueKind {
+        self.queue_type()
+    }
+}
+
+impl QueueTyped for lol_match::MatchRanked<tft_match::Match> {
+    fn queue_type(&self) -> impl QueueKind {
+        self.base.queue_type()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UnifiedQueueType {
     Lol(lol_match::QueueType),
@@ -143,6 +172,13 @@ impl Display for UnifiedQueueType {
 impl QueueKind for UnifiedQueueType {
     fn to_unified(&self) -> UnifiedQueueType {
         *self
+    }
+
+    fn is_ranked(&self) -> bool {
+        match self {
+            Self::Lol(x) => x.is_ranked(),
+            Self::Tft(x) => x.is_ranked(),
+        }
     }
 }
 
@@ -175,11 +211,9 @@ impl League {
     pub fn is_ranked_solo_duo(&self) -> bool {
         self.queue_type.eq("RANKED_SOLO_5x5")
     }
-
     pub fn is_ranked_flex(&self) -> bool {
         self.queue_type.eq("RANKED_FLEX_SR")
     }
-
     pub fn is_ranked_tft(&self) -> bool {
         self.queue_type.eq("RANKED_TFT")
     }

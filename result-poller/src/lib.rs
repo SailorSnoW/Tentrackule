@@ -9,12 +9,13 @@ use std::{
 use tentrackule_db::SharedDatabase;
 use thiserror::Error;
 
-use tentrackule_alert::alert_dispatcher::DiscordAlertDispatcher;
+use tentrackule_alert::{AlertDispatch, TryIntoAlert, alert_dispatcher::DiscordAlertDispatcher};
 use tentrackule_shared::{
-    Account,
+    Account, QueueTyped,
+    lol_match::MatchRanked,
     traits::{
-        CachedAccountSource, CachedSourceError,
-        api::{ApiError, MatchApi},
+        CachedAccountSource, CachedLeagueSource, CachedSourceError, QueueKind,
+        api::{ApiError, LeagueApi, MatchApi},
     },
 };
 use tracing::{Instrument, debug, error, info, info_span, trace, warn};
@@ -50,17 +51,6 @@ pub trait WithLastMatchId {
     ) -> Result<(), CachedSourceError>;
 }
 
-#[async_trait]
-pub trait OnNewMatch<Api, Match> {
-    fn alert_dispatcher(&self) -> &DiscordAlertDispatcher<SharedDatabase>;
-
-    async fn process_new_match(
-        &self,
-        match_data: Match,
-        account: &Account,
-    ) -> Result<(), ResultPollerError>;
-}
-
 pub struct ResultPoller<Api, Match> {
     cache: SharedDatabase,
     api: Arc<Api>,
@@ -73,9 +63,10 @@ pub struct ResultPoller<Api, Match> {
 
 impl<Api, Match> ResultPoller<Api, Match>
 where
-    Self: 'static + OnNewMatch<Api, Match> + WithPuuid + WithLastMatchId,
-    Api: MatchApi<Match>,
-    Match: MatchCreationTime + Send + Sync,
+    Self: 'static + WithPuuid + WithLastMatchId,
+    Api: MatchApi<Match> + LeagueApi,
+    Match: TryIntoAlert + MatchCreationTime + QueueTyped + Clone + Send + Sync,
+    MatchRanked<Match>: TryIntoAlert + QueueTyped,
 {
     pub fn new(
         api: Arc<Api>,
@@ -196,6 +187,54 @@ where
         }
 
         self.process_new_match(match_data, account).await
+    }
+
+    async fn process_new_match(
+        &self,
+        match_data: Match,
+        account: &Account,
+    ) -> Result<(), ResultPollerError> {
+        match match_data.clone().queue_type() {
+            // Normal games when we don't need enriched ranked data
+            x if !x.is_ranked() => {
+                debug!("dispatching alert");
+                self.alert_dispatcher
+                    .dispatch_alert(account, match_data)
+                    .await;
+                Ok(())
+            }
+            // Ranked game where we need enriched ranked data from cached + API leagues
+            // data
+            x if x.is_ranked() => {
+                let match_ranked = match MatchRanked::from_match(
+                    &match_data,
+                    account,
+                    self.cache.clone(),
+                    self.api.clone(),
+                )
+                .await
+                {
+                    Ok(data) => data,
+                    Err(e) => {
+                        error!("conversion of match into a ranked match failed: {}", e);
+                        return Ok(());
+                    }
+                };
+                debug!(league = ?match_ranked.current_league, "updating league");
+                self.cache
+                    .set_league_for(account.id, match_ranked.current_league.clone())
+                    .await
+                    .map_err(ResultPollerError::CacheError)?;
+
+                debug!("dispatching alert");
+                self.alert_dispatcher
+                    .dispatch_alert(account, match_ranked)
+                    .await;
+
+                Ok(())
+            }
+            _ => Ok(()),
+        }
     }
 
     pub fn start(self) -> tokio::task::JoinHandle<()> {

@@ -8,7 +8,7 @@ use tracing::warn;
 use urlencoding::encode;
 
 use crate::{
-    Account, League, UnifiedQueueType, ddragon_version,
+    Account, League, QueueTyped, UnifiedQueueType, ddragon_version,
     errors::RiotMatchError,
     traits::{
         CachedLeagueSource, QueueKind,
@@ -58,8 +58,13 @@ impl QueueKind for QueueType {
     fn to_unified(&self) -> UnifiedQueueType {
         UnifiedQueueType::Lol(*self)
     }
+
+    fn is_ranked(&self) -> bool {
+        matches!(self, Self::SoloDuo | Self::Flex)
+    }
 }
 
+#[derive(Debug, Clone)]
 pub struct Match {
     pub participants: Vec<MatchParticipant>,
     pub queue_id: u16,
@@ -238,5 +243,53 @@ impl<T> MatchRanked<T> {
         }
 
         Some(diff)
+    }
+
+    pub async fn from_match<Api, Cache>(
+        match_data: &T,
+        ranking_of: &Account,
+        cache: Cache,
+        api: Arc<Api>,
+    ) -> Result<Self, RiotMatchError>
+    where
+        T: QueueTyped + Clone,
+        Api: LeagueApi,
+        Cache: CachedLeagueSource,
+    {
+        let queue_type = match_data.queue_type();
+
+        let maybe_cached_league = cache
+            .get_league_for(ranking_of.id, &queue_type)
+            .await
+            .map_err(|e| RiotMatchError::CantRetrieveCachedLeague(e))?;
+
+        if maybe_cached_league.is_none() {
+            warn!(
+                "No cached league is existing for puuid: {} with queue type: {}.",
+                ranking_of.id,
+                match_data.queue_type().to_string()
+            )
+        }
+
+        let current_leagues = api
+            .get_leagues(
+                ranking_of.puuid.clone().unwrap_or_default(),
+                ranking_of.region,
+            )
+            .await
+            .map_err(|e| RiotMatchError::RiotApiError(e))?;
+        let current_league = current_leagues
+            .into_iter()
+            .find(|league| league.queue_type().eq(&queue_type.to_string()))
+            .ok_or(RiotMatchError::NoApiLeagueFound(
+                queue_type.to_string(),
+                ranking_of.puuid.clone().unwrap_or_default(),
+            ))?;
+
+        Ok(MatchRanked {
+            base: match_data.clone(),
+            current_league,
+            cached_league: maybe_cached_league,
+        })
     }
 }

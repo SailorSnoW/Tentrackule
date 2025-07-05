@@ -1,12 +1,15 @@
 use poise::serenity_prelude::{CreateEmbed, CreateEmbedAuthor, CreateEmbedFooter};
 use tentrackule_shared::{
-    Account,
+    Account, QueueTyped,
     lol_match::MatchRanked,
-    tft_match::{Match, Participant, QueueType, UnitsFilter},
-    traits::api::{LeaguePoints, LeagueRank},
+    tft_match::{Match, Participant, UnitsFilter},
+    traits::{
+        QueueKind,
+        api::{LeaguePoints, LeagueRank},
+    },
 };
 
-use crate::{Alert, AlertCreationError, QueueTyped, TryIntoAlert};
+use crate::{Alert, AlertCreationError, TryIntoAlert};
 
 impl TryIntoAlert for Match {
     fn try_into_alert(&self, account: &Account) -> Result<Alert, AlertCreationError> {
@@ -17,7 +20,7 @@ impl TryIntoAlert for Match {
             })?;
 
         match self.queue_type() {
-            QueueType::Normal => Ok(normal_alert(self, focused_participant)),
+            x if !x.is_ranked() => Ok(normal_alert(self, focused_participant)),
 
             _ => Err(AlertCreationError::UnsupportedQueueType {
                 queue_id: self.info.queue_id,
@@ -36,7 +39,7 @@ impl TryIntoAlert for MatchRanked<Match> {
             })?;
 
         match self.queue_type() {
-            QueueType::Ranked => Ok(ranked_alert(self, focused_participant)),
+            x if x.is_ranked() => Ok(ranked_alert(self, focused_participant)),
 
             _ => Err(AlertCreationError::UnsupportedQueueType {
                 queue_id: self.base.info.queue_id,

@@ -10,6 +10,7 @@ pub type CachedSourceError = Box<dyn ErrorT + Send + Sync>;
 
 pub trait QueueKind: ToString + Send + Sync {
     fn to_unified(&self) -> UnifiedQueueType;
+    fn is_ranked(&self) -> bool;
 }
 
 pub trait RiotAccountResponse {

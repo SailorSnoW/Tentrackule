@@ -5,8 +5,8 @@ use async_trait::async_trait;
 use message_sender::MessageSender;
 use poise::serenity_prelude::{ChannelId, CreateMessage, GuildId, Http};
 use tentrackule_shared::{
-    Account,
-    traits::{CachedAccountGuildSource, CachedSettingSource, QueueKind},
+    Account, QueueTyped,
+    traits::{CachedAccountGuildSource, CachedSettingSource},
 };
 use tracing::{error, warn};
 use uuid::Uuid;
@@ -16,10 +16,9 @@ use super::*;
 /// Abstraction for dispatching alert messages to Discord.
 #[async_trait]
 pub trait AlertDispatch {
-    async fn dispatch_alert<T, U>(&self, account: &Account, match_data: T)
+    async fn dispatch_alert<T>(&self, account: &Account, match_data: T)
     where
-        T: TryIntoAlert + QueueTyped<U> + Send + Sync,
-        U: QueueKind;
+        T: TryIntoAlert + QueueTyped + Send + Sync;
 }
 
 /// An AlertDispatcher which use a discord Http client to send alerts.
@@ -60,10 +59,9 @@ where
     S: MessageSender,
     C: CachedAccountGuildSource + CachedSettingSource + Send + Sync,
 {
-    async fn dispatch_alert<T, U>(&self, account: &Account, match_data: T)
+    async fn dispatch_alert<T>(&self, account: &Account, match_data: T)
     where
-        T: TryIntoAlert + QueueTyped<U> + Send + Sync,
-        U: QueueKind,
+        T: TryIntoAlert + QueueTyped + Send + Sync,
     {
         let alert = match match_data.try_into_alert(account) {
             Ok(alert) => alert,
@@ -121,7 +119,7 @@ mod tests {
     use poise::serenity_prelude::{self as serenity};
     use std::sync::{Arc, Mutex};
     use tentrackule_shared::{
-        Account, Region, UnifiedQueueType,
+        Account, Region, UnifiedQueueType, lol_match,
         traits::{CachedSourceError, QueueKind},
     };
 
@@ -352,8 +350,8 @@ mod tests {
             Ok(CreateEmbed::new().description("test"))
         }
     }
-    impl QueueTyped<lol_match::QueueType> for DummyAlert {
-        fn queue_type(&self) -> lol_match::QueueType {
+    impl QueueTyped for DummyAlert {
+        fn queue_type(&self) -> impl QueueKind {
             lol_match::QueueType::NormalDraft
         }
     }
@@ -366,8 +364,8 @@ mod tests {
             })
         }
     }
-    impl QueueTyped<lol_match::QueueType> for FailingAlert {
-        fn queue_type(&self) -> lol_match::QueueType {
+    impl QueueTyped for FailingAlert {
+        fn queue_type(&self) -> impl QueueKind {
             lol_match::QueueType::NormalDraft
         }
     }

@@ -1,7 +1,7 @@
 //! Slash command implementations used by the Discord bot.
 
 use poise::serenity_prelude::ChannelType;
-use tentrackule_shared::{Account, Region, UnifiedQueueType, lol_match};
+use tentrackule_shared::{Account, Region, UnifiedQueueType, lol_match, tft_match};
 use tracing::{debug, info};
 use uuid::Uuid;
 
@@ -20,6 +20,10 @@ pub enum QueueAlertType {
     NormalDraft,
     #[name = "ARAM"]
     Aram,
+    #[name = "TFT Normal"]
+    NormalTft,
+    #[name = "TFT Ranked"]
+    RankedTft,
 }
 
 impl From<QueueAlertType> for UnifiedQueueType {
@@ -29,6 +33,8 @@ impl From<QueueAlertType> for UnifiedQueueType {
             QueueAlertType::Flex => Self::Lol(lol_match::QueueType::Flex),
             QueueAlertType::NormalDraft => Self::Lol(lol_match::QueueType::NormalDraft),
             QueueAlertType::Aram => Self::Lol(lol_match::QueueType::Aram),
+            QueueAlertType::NormalTft => Self::Tft(tft_match::QueueType::Normal),
+            QueueAlertType::RankedTft => Self::Tft(tft_match::QueueType::Ranked),
         }
     }
 }

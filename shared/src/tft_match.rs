@@ -50,6 +50,10 @@ impl QueueKind for QueueType {
     fn to_unified(&self) -> UnifiedQueueType {
         UnifiedQueueType::Tft(*self)
     }
+
+    fn is_ranked(&self) -> bool {
+        matches!(self, Self::Ranked)
+    }
 }
 
 /// Representation of the match data response.

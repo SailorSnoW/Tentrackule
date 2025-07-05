@@ -4,11 +4,10 @@ use async_trait::async_trait;
 use dotenv::dotenv;
 use poise::serenity_prelude::{ChannelId, CreateEmbed, GuildId, Http};
 use tentrackule_alert::{
-    Alert, AlertCreationError, AlertDispatch, QueueTyped, TryIntoAlert,
-    alert_dispatcher::AlertDispatcher,
+    Alert, AlertCreationError, AlertDispatch, TryIntoAlert, alert_dispatcher::AlertDispatcher,
 };
 use tentrackule_shared::{
-    Account, League, Region, lol_match,
+    Account, League, QueueTyped, Region, lol_match,
     traits::{CachedSettingSource, CachedSourceError, QueueKind},
 };
 use uuid::Uuid;
@@ -23,8 +22,8 @@ impl TryIntoAlert for DummyAlert {
     }
 }
 
-impl QueueTyped<lol_match::QueueType> for DummyAlert {
-    fn queue_type(&self) -> lol_match::QueueType {
+impl QueueTyped for DummyAlert {
+    fn queue_type(&self) -> impl QueueKind {
         lol_match::QueueType::NormalDraft
     }
 }
