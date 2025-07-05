@@ -1,21 +1,9 @@
-use std::{
-    fmt::{self, Display},
-    sync::Arc,
-};
+use std::fmt::{self, Display};
 
 use poise::serenity_prelude::Colour;
 use serde::Deserialize;
-use tracing::warn;
 
-use crate::{
-    Account, UnifiedQueueType,
-    errors::RiotMatchError,
-    lol_match::MatchRanked,
-    traits::{
-        CachedLeagueSource, QueueKind,
-        api::{LeagueApi, LeagueQueueType},
-    },
-};
+use crate::{UnifiedQueueType, traits::QueueKind};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum QueueType {
@@ -72,50 +60,6 @@ impl Match {
     }
     pub fn to_trackergg_url(&self) -> String {
         format!("https://tracker.gg/tft/match/{}", self.metadata.match_id)
-    }
-
-    pub async fn try_into_match_ranked<Api, Cache>(
-        self,
-        ranking_of: &Account,
-        api: Arc<dyn LeagueApi>,
-        cache: &Cache,
-    ) -> Result<MatchRanked<Self>, RiotMatchError>
-    where
-        Cache: CachedLeagueSource,
-    {
-        let queue_type: QueueType = self.info.queue_id.into();
-        let maybe_cached_league = cache
-            .get_league_for(ranking_of.id, &queue_type)
-            .await
-            .map_err(|e| RiotMatchError::CantRetrieveCachedLeague(e))?;
-
-        if maybe_cached_league.is_none() {
-            warn!(
-                "No cached league is existing for puuid: {} with queue_id: {}.",
-                ranking_of.id, self.info.queue_id
-            )
-        }
-
-        let current_leagues = api
-            .get_leagues(
-                ranking_of.puuid.clone().unwrap_or_default(),
-                ranking_of.region,
-            )
-            .await
-            .map_err(|e| RiotMatchError::RiotApiError(e))?;
-        let current_league = current_leagues
-            .into_iter()
-            .find(|league| league.queue_type().eq(&queue_type.to_string()))
-            .ok_or(RiotMatchError::NoApiLeagueFound(
-                queue_type.to_string(),
-                ranking_of.puuid.clone().unwrap_or_default(),
-            ))?;
-
-        Ok(MatchRanked {
-            base: self,
-            current_league,
-            cached_league: maybe_cached_league,
-        })
     }
 }
 
