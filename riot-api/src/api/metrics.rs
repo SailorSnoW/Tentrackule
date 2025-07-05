@@ -28,6 +28,9 @@ impl RequestMetrics {
     pub async fn log_loop(self: Arc<Self>) {
         let mut interval = tokio::time::interval(Duration::from_secs(60)); // Log per
         // minutes
+
+        interval.tick().await;
+
         loop {
             let span = info_span!("📊 ", client = self.name);
             async {

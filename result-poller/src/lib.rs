@@ -244,6 +244,7 @@ where
                 info!("Poller started");
 
                 let mut interval = tokio::time::interval(self.poll_interval);
+                interval.tick().await;
 
                 loop {
                     interval.tick().await;
