@@ -1,0 +1,38 @@
+# Build artifacts
+target/
+.cache/
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Environment files (secrets)
+.env
+.env.*
+
+# Database files
+*.db
+*.db-shm
+*.db-wal
+
+# Documentation
+*.md
+!README.md
+LICENSE
+
+# Docker
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Nix
+flake.nix
+flake.lock
+.direnv/
+result

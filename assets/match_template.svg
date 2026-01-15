@@ -1,0 +1,332 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="800" height="380" viewBox="0 0 800 380">
+  <defs>
+    <!-- Background gradient with more depth -->
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a2634"/>
+      <stop offset="50%" style="stop-color:#0f1923"/>
+      <stop offset="100%" style="stop-color:#0a1018"/>
+    </linearGradient>
+
+    <!-- Radial overlay for vignette effect -->
+    <radialGradient id="vignetteGradient" cx="50%" cy="50%" r="70%">
+      <stop offset="0%" style="stop-color:#ffffff;stop-opacity:0"/>
+      <stop offset="100%" style="stop-color:#000000;stop-opacity:0.4"/>
+    </radialGradient>
+
+    <!-- Victory banner gradient -->
+    <linearGradient id="victoryGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#3a7aff"/>
+      <stop offset="50%" style="stop-color:#2762da"/>
+      <stop offset="100%" style="stop-color:#1a4a9a"/>
+    </linearGradient>
+
+    <!-- Defeat banner gradient -->
+    <linearGradient id="defeatGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#ff4466"/>
+      <stop offset="50%" style="stop-color:#cc2244"/>
+      <stop offset="100%" style="stop-color:#881133"/>
+    </linearGradient>
+
+    <!-- Remake banner gradient -->
+    <linearGradient id="remakeGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#6a6a7e"/>
+      <stop offset="50%" style="stop-color:#4a4a5e"/>
+      <stop offset="100%" style="stop-color:#3a3a4e"/>
+    </linearGradient>
+
+    <!-- Stats bar gradient -->
+    <linearGradient id="statsBarGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#182430"/>
+      <stop offset="100%" style="stop-color:#0c1218"/>
+    </linearGradient>
+
+    <!-- Footer gradient -->
+    <linearGradient id="footerGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#101820"/>
+      <stop offset="100%" style="stop-color:#080c10"/>
+    </linearGradient>
+
+    <!-- Champion frame gradient -->
+    <linearGradient id="frameGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4a6080"/>
+      <stop offset="50%" style="stop-color:#2a3a50"/>
+      <stop offset="100%" style="stop-color:#4a6080"/>
+    </linearGradient>
+
+    <!-- Glow filter for banner text -->
+    <filter id="bannerGlow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur"/>
+      <feFlood flood-color="#ffffff" flood-opacity="0.5"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Subtle glow for KDA -->
+    <filter id="kdaGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur"/>
+      <feFlood flood-color="#00dddd" flood-opacity="0.6"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Drop shadow for champion frame -->
+    <filter id="frameShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+
+    <!-- Inner shadow for depth -->
+    <filter id="innerShadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feComponentTransfer in="SourceAlpha">
+        <feFuncA type="table" tableValues="1 0"/>
+      </feComponentTransfer>
+      <feGaussianBlur stdDeviation="3"/>
+      <feOffset dx="2" dy="2" result="offsetblur"/>
+      <feFlood flood-color="#000000" flood-opacity="0.5" result="color"/>
+      <feComposite in2="offsetblur" operator="in"/>
+      <feComposite in2="SourceAlpha" operator="in"/>
+      <feMerge>
+        <feMergeNode in="SourceGraphic"/>
+        <feMergeNode/>
+      </feMerge>
+    </filter>
+
+    <!-- Item glow -->
+    <filter id="itemGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur"/>
+      <feFlood flood-color="#c89b3c" flood-opacity="0.3"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+
+    <!-- Clip paths -->
+    <clipPath id="championClip">
+      <rect x="25" y="75" width="150" height="150" rx="8"/>
+    </clipPath>
+    <clipPath id="profileClip">
+      <rect x="27" y="187" width="41" height="41" rx="4"/>
+    </clipPath>
+
+    <!-- Item clip paths -->
+    <clipPath id="itemClip0"><rect x="195" y="195" width="38" height="38" rx="4"/></clipPath>
+    <clipPath id="itemClip1"><rect x="239" y="195" width="38" height="38" rx="4"/></clipPath>
+    <clipPath id="itemClip2"><rect x="283" y="195" width="38" height="38" rx="4"/></clipPath>
+    <clipPath id="itemClip3"><rect x="327" y="195" width="38" height="38" rx="4"/></clipPath>
+    <clipPath id="itemClip4"><rect x="371" y="195" width="38" height="38" rx="4"/></clipPath>
+    <clipPath id="itemClip5"><rect x="415" y="195" width="38" height="38" rx="4"/></clipPath>
+    <clipPath id="itemClip6"><rect x="459" y="195" width="38" height="38" rx="4"/></clipPath>
+
+    <!-- Noise texture pattern -->
+    <filter id="noise">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" result="noise"/>
+      <feColorMatrix type="saturate" values="0"/>
+      <feBlend in="SourceGraphic" in2="noise" mode="multiply" result="blend"/>
+      <feComposite in="blend" in2="SourceAlpha" operator="in"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="380" fill="url(#bgGradient)"/>
+
+  <!-- Subtle texture overlay -->
+  <rect width="800" height="380" fill="#1a2030" opacity="0.3"/>
+
+  <!-- Vignette effect -->
+  <rect width="800" height="380" fill="url(#vignetteGradient)"/>
+
+  <!-- Top light edge -->
+  <rect x="0" y="0" width="800" height="1" fill="#ffffff" opacity="0.1"/>
+
+  <!-- Result Banner with shadow -->
+  <rect x="0" y="0" width="800" height="62" fill="{{banner_gradient}}"/>
+  <rect x="0" y="60" width="800" height="2" fill="#000000" opacity="0.5"/>
+  <!-- Banner highlight -->
+  <rect x="0" y="0" width="800" height="1" fill="#ffffff" opacity="0.3"/>
+
+  <!-- Banner text with glow -->
+  <text x="400" y="43" font-family="Arial Black, Arial, sans-serif" font-size="32" font-weight="900" fill="#ffffff" text-anchor="middle" letter-spacing="6" filter="url(#bannerGlow)">{{result_text}}</text>
+
+  <!-- Main content area subtle highlight -->
+  <rect x="15" y="70" width="770" height="175" rx="12" fill="#ffffff" opacity="0.02"/>
+
+  <!-- Champion frame with shadow -->
+  <g filter="url(#frameShadow)">
+    <rect x="25" y="75" width="150" height="150" rx="8" fill="#0a1015"/>
+  </g>
+
+  <!-- Champion image -->
+  <image x="25" y="75" width="150" height="150" clip-path="url(#championClip)" xlink:href="{{champion_image}}" preserveAspectRatio="xMidYMid slice"/>
+
+  <!-- Champion frame border with gradient -->
+  <rect x="25" y="75" width="150" height="150" rx="8" fill="none" stroke="url(#frameGradient)" stroke-width="2"/>
+
+  <!-- Inner highlight on champion frame -->
+  <rect x="26" y="76" width="148" height="148" rx="7" fill="none" stroke="#ffffff" stroke-width="1" opacity="0.1"/>
+
+  <!-- Profile Icon with glow effect -->
+  <g filter="url(#itemGlow)">
+    <rect x="23" y="183" width="49" height="49" rx="6" fill="#0a1218"/>
+    <rect x="23" y="183" width="49" height="49" rx="6" fill="none" stroke="#c89b3c" stroke-width="2" opacity="0.8"/>
+  </g>
+  <image x="27" y="187" width="41" height="41" clip-path="url(#profileClip)" xlink:href="{{profile_icon}}" preserveAspectRatio="xMidYMid slice"/>
+
+  <!-- Player Name with subtle shadow -->
+  <text x="196" y="101" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{player_name}}</text>
+  <text x="195" y="100" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#f0f0f0">{{player_name}}</text>
+
+  <!-- Queue Type and Duration -->
+  <text x="195" y="125" font-family="Arial, sans-serif" font-size="14" fill="#7a8a9a">{{queue_type}} • {{duration}}</text>
+
+  <!-- KDA Display with depth -->
+  <text x="196" y="171" font-family="Arial Black, Arial, sans-serif" font-size="38" font-weight="900" fill="#000000" opacity="0.3">{{kills}}</text>
+  <text x="195" y="170" font-family="Arial Black, Arial, sans-serif" font-size="38" font-weight="900" fill="#ffffff">{{kills}}</text>
+
+  <text x="245" y="170" font-family="Arial, sans-serif" font-size="38" font-weight="300" fill="#3a4a5a">/</text>
+
+  <text x="268" y="171" font-family="Arial Black, Arial, sans-serif" font-size="38" font-weight="900" fill="#000000" opacity="0.3">{{deaths}}</text>
+  <text x="267" y="170" font-family="Arial Black, Arial, sans-serif" font-size="38" font-weight="900" fill="#ff6b6b">{{deaths}}</text>
+
+  <text x="317" y="170" font-family="Arial, sans-serif" font-size="38" font-weight="300" fill="#3a4a5a">/</text>
+
+  <text x="340" y="171" font-family="Arial Black, Arial, sans-serif" font-size="38" font-weight="900" fill="#000000" opacity="0.3">{{assists}}</text>
+  <text x="339" y="170" font-family="Arial Black, Arial, sans-serif" font-size="38" font-weight="900" fill="#ffffff">{{assists}}</text>
+
+  <!-- KDA Ratio with glow -->
+  <text x="400" y="170" font-family="Arial, sans-serif" font-size="18" font-weight="700" fill="#00cccc" filter="url(#kdaGlow)">({{kda_ratio}} KDA)</text>
+
+  <!-- Items Row with glow -->
+  <g filter="url(#itemGlow)">
+    <rect x="195" y="195" width="38" height="38" rx="4" fill="#0f1a22" stroke="#785a28" stroke-width="1"/>
+    <rect x="239" y="195" width="38" height="38" rx="4" fill="#0f1a22" stroke="#785a28" stroke-width="1"/>
+    <rect x="283" y="195" width="38" height="38" rx="4" fill="#0f1a22" stroke="#785a28" stroke-width="1"/>
+    <rect x="327" y="195" width="38" height="38" rx="4" fill="#0f1a22" stroke="#785a28" stroke-width="1"/>
+    <rect x="371" y="195" width="38" height="38" rx="4" fill="#0f1a22" stroke="#785a28" stroke-width="1"/>
+    <rect x="415" y="195" width="38" height="38" rx="4" fill="#0f1a22" stroke="#785a28" stroke-width="1"/>
+    <rect x="459" y="195" width="38" height="38" rx="4" fill="#0f1a22" stroke="#463714" stroke-width="1"/>
+  </g>
+
+  <!-- Item Images -->
+  {{#item0}}<image x="195" y="195" width="38" height="38" clip-path="url(#itemClip0)" xlink:href="{{item0}}" preserveAspectRatio="xMidYMid slice"/>{{/item0}}
+  {{#item1}}<image x="239" y="195" width="38" height="38" clip-path="url(#itemClip1)" xlink:href="{{item1}}" preserveAspectRatio="xMidYMid slice"/>{{/item1}}
+  {{#item2}}<image x="283" y="195" width="38" height="38" clip-path="url(#itemClip2)" xlink:href="{{item2}}" preserveAspectRatio="xMidYMid slice"/>{{/item2}}
+  {{#item3}}<image x="327" y="195" width="38" height="38" clip-path="url(#itemClip3)" xlink:href="{{item3}}" preserveAspectRatio="xMidYMid slice"/>{{/item3}}
+  {{#item4}}<image x="371" y="195" width="38" height="38" clip-path="url(#itemClip4)" xlink:href="{{item4}}" preserveAspectRatio="xMidYMid slice"/>{{/item4}}
+  {{#item5}}<image x="415" y="195" width="38" height="38" clip-path="url(#itemClip5)" xlink:href="{{item5}}" preserveAspectRatio="xMidYMid slice"/>{{/item5}}
+  {{#item6}}<image x="459" y="195" width="38" height="38" clip-path="url(#itemClip6)" xlink:href="{{item6}}" preserveAspectRatio="xMidYMid slice"/>{{/item6}}
+
+  <!-- Stats Bar -->
+  <rect x="0" y="250" width="800" height="75" fill="url(#statsBarGradient)"/>
+  <!-- Top highlight -->
+  <rect x="0" y="250" width="800" height="1" fill="#3a4a5a" opacity="0.5"/>
+  <!-- Bottom shadow -->
+  <rect x="0" y="324" width="800" height="1" fill="#000000" opacity="0.3"/>
+
+  <!-- Normal Stats Layout (4 columns) -->
+  {{#stats_normal}}
+  <line x1="200" y1="260" x2="200" y2="315" stroke="#2a3a4a" stroke-width="1"/>
+  <line x1="400" y1="260" x2="400" y2="315" stroke="#2a3a4a" stroke-width="1"/>
+  <line x1="600" y1="260" x2="600" y2="315" stroke="#2a3a4a" stroke-width="1"/>
+
+  <g transform="translate(100, 270)">
+    <rect x="-35" y="-5" width="6" height="20" rx="1" fill="#5a7a9a" opacity="0.8"/>
+    <rect x="-27" y="-10" width="6" height="25" rx="1" fill="#5a7a9a"/>
+    <rect x="-19" y="0" width="6" height="15" rx="1" fill="#5a7a9a" opacity="0.6"/>
+    <text x="0" y="12" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">CS</text>
+    <text x="1" y="39" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{cs}}</text>
+    <text x="0" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff">{{cs}}</text>
+    <text x="55" y="38" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a">({{cs_per_min}}/m)</text>
+  </g>
+
+  <g transform="translate(300, 270)">
+    <g transform="translate(-25, 7)">
+      <line x1="-8" y1="-8" x2="8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
+      <line x1="8" y1="-8" x2="-8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <text x="0" y="12" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">DAMAGE</text>
+    <text x="1" y="39" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{damage}}</text>
+    <text x="0" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#ff6b6b">{{damage}}</text>
+  </g>
+
+  <g transform="translate(500, 270)">
+    <g transform="translate(-25, 7)">
+      <ellipse cx="0" cy="0" rx="10" ry="6" fill="none" stroke="#50a0e0" stroke-width="2.5"/>
+      <circle cx="0" cy="0" r="3" fill="#50a0e0"/>
+    </g>
+    <text x="0" y="12" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">VISION</text>
+    <text x="1" y="39" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{vision}}</text>
+    <text x="0" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#50b0ff">{{vision}}</text>
+  </g>
+
+  <g transform="translate(700, 270)">
+    <g transform="translate(-25, 7)">
+      <circle cx="0" cy="0" r="8" fill="none" stroke="#c89b3c" stroke-width="2"/>
+      <circle cx="0" cy="0" r="2" fill="#c89b3c"/>
+      <line x1="0" y1="-12" x2="0" y2="-8" stroke="#c89b3c" stroke-width="2"/>
+      <line x1="0" y1="8" x2="0" y2="12" stroke="#c89b3c" stroke-width="2"/>
+      <line x1="-12" y1="0" x2="-8" y2="0" stroke="#c89b3c" stroke-width="2"/>
+      <line x1="8" y1="0" x2="12" y2="0" stroke="#c89b3c" stroke-width="2"/>
+    </g>
+    <text x="0" y="12" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">ROLE</text>
+    <text x="1" y="39" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{role}}</text>
+    <text x="0" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#c89b3c">{{role}}</text>
+  </g>
+  {{/stats_normal}}
+
+  <!-- ARAM Stats Layout (2 columns, full width) -->
+  {{#stats_aram}}
+  <line x1="400" y1="260" x2="400" y2="315" stroke="#2a3a4a" stroke-width="1"/>
+
+  <g transform="translate(200, 270)">
+    <rect x="-35" y="-5" width="6" height="20" rx="1" fill="#5a7a9a" opacity="0.8"/>
+    <rect x="-27" y="-10" width="6" height="25" rx="1" fill="#5a7a9a"/>
+    <rect x="-19" y="0" width="6" height="15" rx="1" fill="#5a7a9a" opacity="0.6"/>
+    <text x="0" y="12" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">CS</text>
+    <text x="1" y="39" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{cs}}</text>
+    <text x="0" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff">{{cs}}</text>
+    <text x="55" y="38" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a">({{cs_per_min}}/m)</text>
+  </g>
+
+  <g transform="translate(600, 270)">
+    <g transform="translate(-25, 7)">
+      <line x1="-8" y1="-8" x2="8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
+      <line x1="8" y1="-8" x2="-8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
+    </g>
+    <text x="0" y="12" font-family="Arial, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">DAMAGE</text>
+    <text x="1" y="39" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{damage}}</text>
+    <text x="0" y="38" font-family="Arial, sans-serif" font-size="24" font-weight="700" fill="#ff6b6b">{{damage}}</text>
+  </g>
+  {{/stats_aram}}
+
+  <!-- Footer -->
+  <rect x="0" y="325" width="800" height="55" fill="url(#footerGradient)"/>
+  <rect x="0" y="325" width="800" height="1" fill="#2a3a4a" opacity="0.5"/>
+
+  <!-- Rank emblem (diamond with glow) -->
+  <g transform="translate(35, 352)" filter="url(#itemGlow)">
+    <polygon points="0,-14 14,0 0,14 -14,0" fill="#0066aa" stroke="#00aaff" stroke-width="1.5"/>
+    <polygon points="0,-8 8,0 0,8 -8,0" fill="#00aaff"/>
+    <polygon points="0,-4 4,0 0,4 -4,0" fill="#ffffff" opacity="0.5"/>
+  </g>
+
+  <!-- Rank info with shadow -->
+  <text x="61" y="359" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#000000" opacity="0.3">{{rank_display}}</text>
+  <text x="60" y="358" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="#ffffff">{{rank_display}}</text>
+  <text x="{{lp_x}}" y="358" font-family="Arial, sans-serif" font-size="16" font-weight="700" fill="{{lp_color}}">{{lp_change}}</text>
+
+  <!-- Patch version -->
+  <text x="770" y="358" font-family="Arial, sans-serif" font-size="13" fill="#4a5a6a" text-anchor="end">Patch {{patch}}</text>
+
+  <!-- Decorative corner elements -->
+  <path d="M0 0 L50 0 L50 3 L3 3 L3 50 L0 50 Z" fill="#c89b3c" opacity="0.15"/>
+  <path d="M800 0 L750 0 L750 3 L797 3 L797 50 L800 50 Z" fill="#c89b3c" opacity="0.15"/>
+  <path d="M800 380 L750 380 L750 377 L797 377 L797 330 L800 330 Z" fill="#c89b3c" opacity="0.15"/>
+  <path d="M0 380 L50 380 L50 377 L3 377 L3 330 L0 330 Z" fill="#c89b3c" opacity="0.15"/>
+</svg>

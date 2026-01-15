@@ -31,6 +31,7 @@
               clang
               pkg-config
               openssl
+              flyctl
 
               # Extra
               prettierd

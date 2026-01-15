@@ -1,0 +1,25 @@
+# fly.toml app configuration file generated for tentrackule on 2026-01-15T18:06:22+01:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'tentrackule'
+primary_region = 'cdg'
+
+[build]
+
+[env]
+  DATABASE_URL = 'sqlite:/data/tentrackule.db'
+  DDRAGON_VERSION = '16.1.1'
+  LOG_FORMAT = 'json'
+  POLLING_INTERVAL_SECS = '60'
+  RUST_LOG = 'info,tentrackule=debug'
+
+[[mounts]]
+  source = 'tentrackule_data'
+  destination = '/data'
+
+[[vm]]
+  memory = '256mb'
+  cpu_kind = 'shared'
+  cpus = 1

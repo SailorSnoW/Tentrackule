@@ -1,32 +1,54 @@
 [package]
-name = "Tentrackule"
-version = "1.2.0"
+name = "tentrackule"
+version = "2.0.0"
 authors = ["Loïs Lag <lois@snowcorp.fr>"]
 edition = "2024"
 readme = "README.md"
 license = "MIT"
 
-# See more keys and thair definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
-dotenv = "0.15"
+# Async runtime
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+
+# Discord
+poise = "0.6"
+serenity = { version = "0.12", default-features = false, features = [
+    "client",
+    "gateway",
+    "model",
+    "rustls_backend",
+] }
+
+# HTTP client
+reqwest = { version = "0.12", default-features = false, features = [
+    "json",
+    "rustls-tls",
+] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+
+# Database
+sqlx = { version = "0.8", features = ["runtime-tokio", "sqlite"] }
+
+# Rate limiting
+governor = "0.8"
+
+# Error handling
+thiserror = "2"
+
+# Logging
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt", "chrono"] }
-tracing-appender = "0.2"
-tokio = { version = "1.21.2", features = ["macros", "rt-multi-thread"] }
-futures = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 
-tentrackule-riot-api = { path = "./riot-api" }
-tentrackule-db = { path = "./db" }
-tentrackule-bot = { path = "./bot" }
-tentrackule-alert = { path = "./alert" }
-tentrackule-shared = { path = "./shared" }
+# Environment
+dotenvy = "0.15"
 
-[workspace]
-members = [
-    "riot-api",
-    "db",
-    "bot",
-    "alert",
-    "shared"
-]
+# Utilities
+urlencoding = "2"
+
+# Image generation
+resvg = "0.44"
+usvg = "0.44"
+tiny-skia = "0.11"
+base64 = "0.22"

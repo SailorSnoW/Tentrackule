@@ -1,0 +1,22 @@
+services:
+  tentrackule:
+    build: .
+    container_name: tentrackule
+    restart: unless-stopped
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - RIOT_API_KEY=${RIOT_API_KEY}
+      - DATABASE_URL=sqlite:/app/data/tentrackule.db
+      - DDRAGON_VERSION=${DDRAGON_VERSION:-14.24.1}
+      - POLLING_INTERVAL_SECS=${POLLING_INTERVAL_SECS:-60}
+      - RUST_LOG=${RUST_LOG:-info,tentrackule=debug}
+      - LOG_FORMAT=${LOG_FORMAT:-json}
+    volumes:
+      - tentrackule-data:/app/data
+      - tentrackule-cache:/app/.cache
+    mem_limit: 256m
+    cpus: 0.5
+
+volumes:
+  tentrackule-data:
+  tentrackule-cache:

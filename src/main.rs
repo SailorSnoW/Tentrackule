@@ -1,70 +1,120 @@
-//! Entry point of the Tentrackule application.
-//!
-//! Initializes the various components and starts both the Discord bot and the
-//! result poller.
+mod config;
+mod db;
+mod discord;
+mod error;
+mod poller;
+mod riot;
 
-use std::{env, sync::Arc};
+use std::sync::Arc;
 
-use dotenv::dotenv;
-use result_poller::ResultPoller;
-use tentrackule_alert::alert_dispatcher::DiscordAlertDispatcher;
-use tentrackule_bot::DiscordBot;
-use tentrackule_db::SharedDatabase;
-use tentrackule_riot_api::api::LolApiClient;
-use tentrackule_shared::init_ddragon_version;
-use tracing::{error, info};
+use poise::serenity_prelude as serenity;
+use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
-mod logging;
-mod result_poller;
+use crate::config::Config;
+use crate::db::Repository;
+use crate::discord::{Data, ImageGenerator};
+use crate::riot::RiotClient;
 
 #[tokio::main]
-async fn main() {
-    dotenv().ok();
-    logging::init();
-    init_ddragon_version();
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize logging
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("info,tentrackule=debug"));
 
-    info!("🚀 Tentrackule starting");
+    let json_logs = std::env::var("LOG_FORMAT")
+        .map(|v| v.to_lowercase() == "json")
+        .unwrap_or(false);
 
-    let db = SharedDatabase::new_from_env().unwrap();
-    db.init().await;
-
-    let lol_api: Arc<LolApiClient> = LolApiClient::new(get_api_key_from_env()).into();
-
-    let bot = DiscordBot::new(Arc::new(db.clone()), lol_api.clone()).await;
-    let alert_dispatcher: DiscordAlertDispatcher<SharedDatabase> =
-        DiscordAlertDispatcher::new(bot.client().http.clone(), db.clone());
-
-    let result_poller = ResultPoller::new(lol_api.clone(), db, alert_dispatcher);
-
-    lol_api.start_metrics_logging();
-
-    tokio::select! {
-        res = bot.start() => {
-            match res {
-                Ok(Ok(())) => info!("The discord bot task exited gracefully."),
-                Ok(Err(e)) => {
-                    error!("The discord bot task crashed: {:?}", e);
-                    return;
-                },
-                Err(e) => {
-                    error!("The discord bot task panicked: {:?}", e);
-                    return;
-                },
-            }
-        },
-        res = result_poller.start() => {
-            match res {
-                Ok(()) => info!("The result poller exited gracefully."),
-                Err(e) => {
-                    error!("The result poller crashed: {:?}", e);
-                    return;
-                },
-            }
-        },
+    if json_logs {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt::layer().json().with_file(true).with_line_number(true))
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(
+                fmt::layer()
+                    .with_target(true)
+                    .with_file(true)
+                    .with_line_number(true)
+                    .with_thread_ids(false),
+            )
+            .init();
     }
-}
 
-fn get_api_key_from_env() -> String {
-    env::var("RIOT_API_KEY")
-        .expect("A Riot API Key must be set in environment to create the API Client.")
+    tracing::info!("🦑 Starting Tentrackule 2.0");
+
+    // Load configuration
+    let config = Config::from_env()?;
+    tracing::info!("⚙️ Configuration loaded");
+
+    // Initialize database
+    let db_options: SqliteConnectOptions = config.database_url.parse()?;
+    let db_options = db_options.create_if_missing(true);
+
+    let pool = SqlitePoolOptions::new()
+        .max_connections(5)
+        .connect_with(db_options)
+        .await?;
+
+    db::run_migrations(&pool).await?;
+    let repository = Repository::new(pool.clone());
+    tracing::info!("🗄️ Database initialized");
+
+    // Initialize Riot API client
+    let riot_client = RiotClient::new(
+        config.riot_api_key.clone(),
+        config.riot_rate_limit_per_second,
+    );
+    tracing::info!("🔷 Riot API client initialized");
+
+    // Initialize image generator
+    let image_gen = Arc::new(ImageGenerator::new(config.ddragon_version.clone()).await);
+    tracing::info!(version = %config.ddragon_version, "🖼️ Image generator initialized");
+
+    // Create shared data for Discord bot
+    let data = Data {
+        db: repository.clone(),
+        riot: riot_client.clone(),
+        image_gen: ImageGenerator::new(config.ddragon_version.clone()).await,
+    };
+
+    // Build Discord framework
+    let framework = discord::create_framework(data);
+
+    // Build Discord client
+    let intents = serenity::GatewayIntents::GUILDS;
+    let mut client = serenity::ClientBuilder::new(&config.discord_token, intents)
+        .framework(framework)
+        .await?;
+
+    // Get HTTP client for poller
+    let http = Arc::clone(&client.http);
+
+    // Spawn match poller in background
+    let poller_db = repository.clone();
+    let poller_riot = riot_client.clone();
+    let poller_image_gen = Arc::clone(&image_gen);
+    let polling_interval = config.polling_interval_secs;
+
+    tokio::spawn(async move {
+        poller::start_polling(
+            poller_db,
+            poller_riot,
+            http,
+            poller_image_gen,
+            polling_interval,
+        )
+        .await;
+    });
+
+    tracing::info!("🔄 Match poller spawned");
+
+    // Start the bot
+    tracing::info!("🎮 Starting Discord bot...");
+    client.start().await?;
+
+    Ok(())
 }
