@@ -39,11 +39,12 @@ async fn poll_players(
     let players = db.get_all_tracked_players().await?;
 
     if players.is_empty() {
+        debug!("🔄 No players tracked, skipping poll cycle");
         return Ok(());
     }
 
     Span::current().record("player_count", players.len());
-    debug!(count = players.len(), "🔄 Polling players");
+    info!(count = players.len(), "🔄 Polling {} player(s)", players.len());
 
     for player in players {
         if let Err(e) = check_player_match(db, riot, http, image_gen, &player).await {
