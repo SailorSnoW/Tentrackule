@@ -303,9 +303,7 @@ pub struct ImageGenerator {
 
 impl ImageGenerator {
     pub async fn new(ddragon_version: String) -> Result<Self, AppError> {
-        let http = Client::builder()
-            .user_agent("Tentrackule/2.0")
-            .build()?;
+        let http = Client::builder().user_agent("Tentrackule/2.0").build()?;
 
         // Load system fonts
         let mut fontdb = Database::new();
@@ -364,19 +362,18 @@ impl ImageGenerator {
                 None
             }
         };
-        let (champion_image, profile_icon, item0, item1, item2, item3, item4, item5, item6) =
-            tokio::join!(
-                champion_fut,
-                profile_fut,
-                fetch_item(items[0]),
-                fetch_item(items[1]),
-                fetch_item(items[2]),
-                fetch_item(items[3]),
-                fetch_item(items[4]),
-                fetch_item(items[5]),
-                fetch_item(items[6])
-            );
-        let item_images = vec![item0, item1, item2, item3, item4, item5, item6];
+        let (champion_image, profile_icon, item0, item1, item2, item3, item4, item5, item6) = tokio::join!(
+            champion_fut,
+            profile_fut,
+            fetch_item(items[0]),
+            fetch_item(items[1]),
+            fetch_item(items[2]),
+            fetch_item(items[3]),
+            fetch_item(items[4]),
+            fetch_item(items[5]),
+            fetch_item(items[6])
+        );
+        let item_images = [item0, item1, item2, item3, item4, item5, item6];
         let champion_image = champion_image.unwrap_or_default();
         let profile_icon = profile_icon.unwrap_or_default();
 
