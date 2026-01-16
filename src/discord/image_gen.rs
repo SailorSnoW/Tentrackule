@@ -347,28 +347,38 @@ impl ImageGenerator {
             ("url(#defeatGradient)", "url(#defeatGlow)", "DEFEAT")
         };
 
-        // Fetch images
-        let champion_image = self
-            .fetch_champion_image(&participant.champion_name)
-            .await
-            .unwrap_or_default();
-
-        let profile_icon = if let Some(icon_id) = ctx.player.profile_icon_id {
-            self.fetch_profile_icon(icon_id).await.unwrap_or_default()
-        } else {
-            String::new()
-        };
-
-        // Fetch item images
-        let items = participant.items();
-        let mut item_images: Vec<Option<String>> = Vec::with_capacity(7);
-        for item_id in items {
-            if item_id > 0 {
-                item_images.push(self.fetch_item_image(item_id).await);
+        // Fetch images in parallel
+        let champion_fut = self.fetch_champion_image(&participant.champion_name);
+        let profile_fut = async {
+            if let Some(icon_id) = ctx.player.profile_icon_id {
+                self.fetch_profile_icon(icon_id).await
             } else {
-                item_images.push(None);
+                None
             }
-        }
+        };
+        let items = participant.items();
+        let fetch_item = |item_id| async move {
+            if item_id > 0 {
+                self.fetch_item_image(item_id).await
+            } else {
+                None
+            }
+        };
+        let (champion_image, profile_icon, item0, item1, item2, item3, item4, item5, item6) =
+            tokio::join!(
+                champion_fut,
+                profile_fut,
+                fetch_item(items[0]),
+                fetch_item(items[1]),
+                fetch_item(items[2]),
+                fetch_item(items[3]),
+                fetch_item(items[4]),
+                fetch_item(items[5]),
+                fetch_item(items[6])
+            );
+        let item_images = vec![item0, item1, item2, item3, item4, item5, item6];
+        let champion_image = champion_image.unwrap_or_default();
+        let profile_icon = profile_icon.unwrap_or_default();
 
         // Stats
         let cs = participant.cs_total();
