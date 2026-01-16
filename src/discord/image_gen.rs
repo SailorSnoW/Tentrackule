@@ -94,20 +94,19 @@ impl ImageCache {
                     let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
                     let data_uri = format!("data:image/png;base64,{}", b64);
 
-                    // Extract URL from filename
-                    if let Some(url) = self
-                        .filename_to_url(path.file_stem().and_then(|s| s.to_str()).unwrap_or(""))
-                    {
-                        let entry = CacheEntry {
-                            data_uri,
-                            size_bytes: bytes.len(),
-                            created_at: modified,
-                        };
+                    let Some(key) = path.file_stem().and_then(|s| s.to_str()) else {
+                        continue;
+                    };
 
-                        let mut cache = self.memory_cache.write().await;
-                        cache.insert(url, entry);
-                        loaded_count += 1;
-                    }
+                    let entry = CacheEntry {
+                        data_uri,
+                        size_bytes: bytes.len(),
+                        created_at: modified,
+                    };
+
+                    let mut cache = self.memory_cache.write().await;
+                    cache.insert(key.to_string(), entry);
+                    loaded_count += 1;
                 }
             }
         }
@@ -121,26 +120,18 @@ impl ImageCache {
         }
     }
 
-    /// Convert URL to safe filename
-    fn url_to_filename(&self, url: &str) -> String {
-        // Create a hash-based filename to avoid path issues
+    /// Convert URL to a stable cache key (also used as filename).
+    fn cache_key(&self, url: &str) -> String {
+        // Create a hash-based key to avoid path issues
         let hash = url
             .bytes()
             .fold(0u64, |acc, b| acc.wrapping_mul(31).wrapping_add(b as u64));
         format!("{:016x}", hash)
     }
 
-    /// Convert filename back to URL (for known patterns)
-    fn filename_to_url(&self, filename: &str) -> Option<String> {
-        // We can't reverse the hash, but we store the URL in memory anyway
-        // This is just for initial load - we'll match by hash
-        Some(filename.to_string())
-    }
-
-    /// Get cache file path for a URL
-    fn get_cache_path(&self, url: &str) -> PathBuf {
-        self.cache_dir
-            .join(format!("{}.png", self.url_to_filename(url)))
+    /// Get cache file path for a cache key
+    fn get_cache_path(&self, key: &str) -> PathBuf {
+        self.cache_dir.join(format!("{}.png", key))
     }
 
     /// Calculate total cache size
@@ -162,23 +153,23 @@ impl ImageCache {
         // Sort by age and remove oldest
         let mut entries: Vec<_> = cache
             .iter()
-            .map(|(k, v)| (k.clone(), v.created_at))
+            .map(|(key, entry)| (key.clone(), entry.created_at))
             .collect();
         entries.sort_by(|a, b| a.1.cmp(&b.1));
 
         let mut freed: u64 = 0;
         let target_free = current_size - (self.max_size_bytes * 80 / 100); // Free to 80% capacity
 
-        for (url, _) in entries {
+        for (key, _) in entries {
             if freed >= target_free {
                 break;
             }
 
-            if let Some(entry) = cache.remove(&url) {
+            if let Some(entry) = cache.remove(&key) {
                 freed += entry.size_bytes as u64;
 
                 // Also remove from disk
-                let path = self.get_cache_path(&url);
+                let path = self.get_cache_path(&key);
                 let _ = fs::remove_file(&path).await;
             }
         }
@@ -197,10 +188,12 @@ impl ImageCache {
     }
 
     async fn get_or_fetch(&self, http: &Client, url: &str) -> Option<String> {
+        let key = self.cache_key(url);
+
         // Check memory cache first
         {
             let cache = self.memory_cache.read().await;
-            if let Some(entry) = cache.get(url)
+            if let Some(entry) = cache.get(&key)
                 && !self.is_expired(entry)
             {
                 trace!(url, "🖼️ Memory cache hit");
@@ -209,7 +202,7 @@ impl ImageCache {
         }
 
         // Check disk cache
-        let cache_path = self.get_cache_path(url);
+        let cache_path = self.get_cache_path(&key);
         if cache_path.exists()
             && let Ok(metadata) = fs::metadata(&cache_path).await
             && let Ok(modified) = metadata.modified()
@@ -228,7 +221,7 @@ impl ImageCache {
                     };
 
                     let mut cache = self.memory_cache.write().await;
-                    cache.insert(url.to_string(), entry);
+                    cache.insert(key.clone(), entry);
 
                     trace!(url, "🖼️ Disk cache hit");
                     return Some(data_uri);
@@ -262,7 +255,7 @@ impl ImageCache {
 
                         {
                             let mut cache = self.memory_cache.write().await;
-                            cache.insert(url.to_string(), entry);
+                            cache.insert(key.clone(), entry);
                         }
 
                         // Check if eviction needed

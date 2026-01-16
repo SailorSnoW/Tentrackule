@@ -78,7 +78,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let data = Data {
         db: repository.clone(),
         riot: riot_client.clone(),
-        image_gen: ImageGenerator::new(config.ddragon_version.clone()).await,
+        image_gen: Arc::clone(&image_gen),
     };
 
     // Build Discord framework

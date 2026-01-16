@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use tracing::{error, info, warn};
 
 use crate::db::Repository;
@@ -11,7 +13,7 @@ use super::image_gen::ImageGenerator;
 pub struct Data {
     pub db: Repository,
     pub riot: RiotClient,
-    pub image_gen: ImageGenerator,
+    pub image_gen: Arc<ImageGenerator>,
 }
 
 impl std::fmt::Debug for Data {
