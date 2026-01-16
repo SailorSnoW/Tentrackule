@@ -6,3 +6,4 @@ target
 *.db3-wal
 *.db
 .cache/
+CLAUDE.md

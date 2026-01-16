@@ -236,37 +236,37 @@
   <line x1="600" y1="260" x2="600" y2="315" stroke="#2a3a4a" stroke-width="1"/>
 
   <g transform="translate(100, 270)">
-    <rect x="-35" y="-5" width="6" height="20" rx="1" fill="#5a7a9a" opacity="0.8"/>
-    <rect x="-27" y="-10" width="6" height="25" rx="1" fill="#5a7a9a"/>
-    <rect x="-19" y="0" width="6" height="15" rx="1" fill="#5a7a9a" opacity="0.6"/>
-    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">CS</text>
-    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{cs}}</text>
-    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ffffff">{{cs}}</text>
+    <rect x="-55" y="-5" width="6" height="20" rx="1" fill="#5a7a9a" opacity="0.8"/>
+    <rect x="-47" y="-10" width="6" height="25" rx="1" fill="#5a7a9a"/>
+    <rect x="-39" y="0" width="6" height="15" rx="1" fill="#5a7a9a" opacity="0.6"/>
+    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1" text-anchor="middle">CS</text>
+    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3" text-anchor="middle">{{cs}}</text>
+    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="middle">{{cs}}</text>
     <text x="55" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a">({{cs_per_min}}/m)</text>
   </g>
 
   <g transform="translate(300, 270)">
-    <g transform="translate(-25, 7)">
+    <g transform="translate(-50, 7)">
       <line x1="-8" y1="-8" x2="8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
       <line x1="8" y1="-8" x2="-8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
     </g>
-    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">DAMAGE</text>
-    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{damage}}</text>
-    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ff6b6b">{{damage}}</text>
+    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1" text-anchor="middle">DAMAGE</text>
+    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3" text-anchor="middle">{{damage}}</text>
+    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ff6b6b" text-anchor="middle">{{damage}}</text>
   </g>
 
   <g transform="translate(500, 270)">
-    <g transform="translate(-25, 7)">
+    <g transform="translate(-50, 7)">
       <ellipse cx="0" cy="0" rx="10" ry="6" fill="none" stroke="#50a0e0" stroke-width="2.5"/>
       <circle cx="0" cy="0" r="3" fill="#50a0e0"/>
     </g>
-    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">VISION</text>
-    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{vision}}</text>
-    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#50b0ff">{{vision}}</text>
+    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1" text-anchor="middle">VISION</text>
+    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3" text-anchor="middle">{{vision}}</text>
+    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#50b0ff" text-anchor="middle">{{vision}}</text>
   </g>
 
   <g transform="translate(700, 270)">
-    <g transform="translate(-25, 7)">
+    <g transform="translate(-55, 7)">
       <circle cx="0" cy="0" r="8" fill="none" stroke="#c89b3c" stroke-width="2"/>
       <circle cx="0" cy="0" r="2" fill="#c89b3c"/>
       <line x1="0" y1="-12" x2="0" y2="-8" stroke="#c89b3c" stroke-width="2"/>
@@ -274,9 +274,9 @@
       <line x1="-12" y1="0" x2="-8" y2="0" stroke="#c89b3c" stroke-width="2"/>
       <line x1="8" y1="0" x2="12" y2="0" stroke="#c89b3c" stroke-width="2"/>
     </g>
-    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">ROLE</text>
-    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{role}}</text>
-    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#c89b3c">{{role}}</text>
+    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1" text-anchor="middle">ROLE</text>
+    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3" text-anchor="middle">{{role}}</text>
+    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#c89b3c" text-anchor="middle">{{role}}</text>
   </g>
   {{/stats_normal}}
 
@@ -285,23 +285,23 @@
   <line x1="400" y1="260" x2="400" y2="315" stroke="#2a3a4a" stroke-width="1"/>
 
   <g transform="translate(200, 270)">
-    <rect x="-35" y="-5" width="6" height="20" rx="1" fill="#5a7a9a" opacity="0.8"/>
-    <rect x="-27" y="-10" width="6" height="25" rx="1" fill="#5a7a9a"/>
-    <rect x="-19" y="0" width="6" height="15" rx="1" fill="#5a7a9a" opacity="0.6"/>
-    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">CS</text>
-    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{cs}}</text>
-    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ffffff">{{cs}}</text>
+    <rect x="-55" y="-5" width="6" height="20" rx="1" fill="#5a7a9a" opacity="0.8"/>
+    <rect x="-47" y="-10" width="6" height="25" rx="1" fill="#5a7a9a"/>
+    <rect x="-39" y="0" width="6" height="15" rx="1" fill="#5a7a9a" opacity="0.6"/>
+    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1" text-anchor="middle">CS</text>
+    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3" text-anchor="middle">{{cs}}</text>
+    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="middle">{{cs}}</text>
     <text x="55" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a">({{cs_per_min}}/m)</text>
   </g>
 
   <g transform="translate(600, 270)">
-    <g transform="translate(-25, 7)">
+    <g transform="translate(-50, 7)">
       <line x1="-8" y1="-8" x2="8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
       <line x1="8" y1="-8" x2="-8" y2="8" stroke="#e05050" stroke-width="3" stroke-linecap="round"/>
     </g>
-    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1">DAMAGE</text>
-    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3">{{damage}}</text>
-    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ff6b6b">{{damage}}</text>
+    <text x="0" y="12" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="12" fill="#5a7a9a" font-weight="600" letter-spacing="1" text-anchor="middle">DAMAGE</text>
+    <text x="1" y="39" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#000000" opacity="0.3" text-anchor="middle">{{damage}}</text>
+    <text x="0" y="38" font-family="Noto Sans CJK SC, Noto Sans, DejaVu Sans, sans-serif" font-size="24" font-weight="700" fill="#ff6b6b" text-anchor="middle">{{damage}}</text>
   </g>
   {{/stats_aram}}
 
