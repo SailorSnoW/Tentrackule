@@ -37,7 +37,7 @@ impl Config {
             .and_then(NonZeroU32::new)
             .unwrap_or(NonZeroU32::new(20).unwrap());
 
-        let ddragon_version = env::var("DDRAGON_VERSION").unwrap_or_else(|_| "14.24.1".into());
+        let ddragon_version = env::var("DDRAGON_VERSION").unwrap_or_else(|_| "16.1.1".into());
 
         Ok(Self {
             discord_token,
