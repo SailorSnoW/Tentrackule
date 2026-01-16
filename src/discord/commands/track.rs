@@ -1,5 +1,5 @@
 use poise::serenity_prelude as serenity;
-use tracing::{info, instrument};
+use tracing::{info, instrument, warn};
 
 use crate::discord::bot::Context;
 use crate::error::AppError;
@@ -65,6 +65,31 @@ pub async fn track(
         .db
         .update_player_profile_icon(player.id, summoner.profile_icon_id)
         .await?;
+
+    // If player has no last_match_id, fetch and store it to avoid alerting on old games
+    if player.last_match_id.is_none() {
+        let riot_region = platform.to_region();
+        match ctx
+            .data()
+            .riot
+            .get_match_ids(riot_region, puuid, 1)
+            .await
+        {
+            Ok(match_ids) => {
+                if let Some(last_match_id) = match_ids.first() {
+                    ctx.data()
+                        .db
+                        .update_player_last_match(player.id, last_match_id)
+                        .await?;
+                    info!(last_match_id, "Initialized player's last_match_id");
+                }
+            }
+            Err(e) => {
+                // Non-fatal: player might not have any matches yet
+                warn!(error = %e, "Could not fetch last match ID for new player");
+            }
+        }
+    }
 
     // Check if already tracked in this guild
     if ctx
