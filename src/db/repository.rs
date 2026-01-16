@@ -3,6 +3,31 @@ use sqlx::SqlitePool;
 use super::models::{Guild, Player, RankInfo};
 use crate::error::AppError;
 
+const PLAYER_COLUMN_NAMES: [&str; 13] = [
+    "id",
+    "puuid",
+    "game_name",
+    "tag_line",
+    "region",
+    "profile_icon_id",
+    "last_match_id",
+    "last_rank_solo_tier",
+    "last_rank_solo_rank",
+    "last_rank_solo_lp",
+    "last_rank_flex_tier",
+    "last_rank_flex_rank",
+    "last_rank_flex_lp",
+];
+
+fn player_columns(alias: Option<&str>) -> String {
+    let prefix = alias.map(|a| format!("{a}.")).unwrap_or_default();
+    PLAYER_COLUMN_NAMES
+        .iter()
+        .map(|col| format!("{prefix}{col}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
 #[derive(Clone, Debug)]
 pub struct Repository {
     pool: SqlitePool,
@@ -22,33 +47,34 @@ impl Repository {
         tag_line: &str,
         region: &str,
     ) -> Result<Player, AppError> {
-        if let Some(player) = self.get_player_by_puuid(puuid).await? {
-            return Ok(player);
-        }
+        let columns = player_columns(None);
+        let query = format!(
+            r#"
+            INSERT INTO players (puuid, game_name, tag_line, region)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(puuid) DO UPDATE SET
+                game_name = excluded.game_name,
+                tag_line = excluded.tag_line,
+                region = excluded.region
+            RETURNING {columns}
+            "#
+        );
 
-        sqlx::query("INSERT INTO players (puuid, game_name, tag_line, region) VALUES (?, ?, ?, ?)")
+        let player = sqlx::query_as::<_, Player>(&query)
             .bind(puuid)
             .bind(game_name)
             .bind(tag_line)
             .bind(region)
-            .execute(&self.pool)
+            .fetch_one(&self.pool)
             .await?;
-
-        self.get_player_by_puuid(puuid)
-            .await?
-            .ok_or_else(|| AppError::PlayerNotFound {
-                game_name: game_name.to_string(),
-                tag_line: tag_line.to_string(),
-            })
+        Ok(player)
     }
 
     pub async fn get_player_by_puuid(&self, puuid: &str) -> Result<Option<Player>, AppError> {
-        let player = sqlx::query_as::<_, Player>(
-            "SELECT id, puuid, game_name, tag_line, region, profile_icon_id, last_match_id, \
-             last_rank_solo_tier, last_rank_solo_rank, last_rank_solo_lp, \
-             last_rank_flex_tier, last_rank_flex_rank, last_rank_flex_lp \
-             FROM players WHERE puuid = ?",
-        )
+        let columns = player_columns(None);
+        let player = sqlx::query_as::<_, Player>(&format!(
+            "SELECT {columns} FROM players WHERE puuid = ?"
+        ))
         .bind(puuid)
         .fetch_optional(&self.pool)
         .await?;
@@ -60,12 +86,10 @@ impl Repository {
         game_name: &str,
         tag_line: &str,
     ) -> Result<Option<Player>, AppError> {
-        let player = sqlx::query_as::<_, Player>(
-            "SELECT id, puuid, game_name, tag_line, region, profile_icon_id, last_match_id, \
-             last_rank_solo_tier, last_rank_solo_rank, last_rank_solo_lp, \
-             last_rank_flex_tier, last_rank_flex_rank, last_rank_flex_lp \
-             FROM players WHERE LOWER(game_name) = LOWER(?) AND LOWER(tag_line) = LOWER(?)",
-        )
+        let columns = player_columns(None);
+        let player = sqlx::query_as::<_, Player>(&format!(
+            "SELECT {columns} FROM players WHERE LOWER(game_name) = LOWER(?) AND LOWER(tag_line) = LOWER(?)"
+        ))
         .bind(game_name)
         .bind(tag_line)
         .fetch_optional(&self.pool)
@@ -74,17 +98,16 @@ impl Repository {
     }
 
     pub async fn get_all_tracked_players(&self) -> Result<Vec<Player>, AppError> {
-        let players = sqlx::query_as::<_, Player>(
+        let columns = player_columns(Some("p"));
+        let players = sqlx::query_as::<_, Player>(&format!(
             r#"
-            SELECT DISTINCT p.id, p.puuid, p.game_name, p.tag_line, p.region, p.profile_icon_id,
-                   p.last_match_id, p.last_rank_solo_tier, p.last_rank_solo_rank, p.last_rank_solo_lp,
-                   p.last_rank_flex_tier, p.last_rank_flex_rank, p.last_rank_flex_lp
+            SELECT DISTINCT {columns}
             FROM players p
             INNER JOIN guild_players gp ON p.id = gp.player_id
             INNER JOIN guilds g ON gp.guild_id = g.id
             WHERE g.alert_channel_id IS NOT NULL
-            "#,
-        )
+            "#
+        ))
         .fetch_all(&self.pool)
         .await?;
         Ok(players)
@@ -224,17 +247,16 @@ impl Repository {
     }
 
     pub async fn get_guild_players(&self, guild_id: u64) -> Result<Vec<Player>, AppError> {
-        let players = sqlx::query_as::<_, Player>(
+        let columns = player_columns(Some("p"));
+        let players = sqlx::query_as::<_, Player>(&format!(
             r#"
-            SELECT p.id, p.puuid, p.game_name, p.tag_line, p.region, p.profile_icon_id,
-                   p.last_match_id, p.last_rank_solo_tier, p.last_rank_solo_rank, p.last_rank_solo_lp,
-                   p.last_rank_flex_tier, p.last_rank_flex_rank, p.last_rank_flex_lp
+            SELECT {columns}
             FROM players p
             INNER JOIN guild_players gp ON p.id = gp.player_id
             WHERE gp.guild_id = ?
             ORDER BY p.game_name ASC
-            "#,
-        )
+            "#
+        ))
         .bind(guild_id as i64)
         .fetch_all(&self.pool)
         .await?;
