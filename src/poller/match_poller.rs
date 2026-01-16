@@ -7,7 +7,19 @@ use tracing::{Span, debug, error, info, instrument, warn};
 
 use crate::db::{Player, RankInfo, Repository};
 use crate::discord::image_gen::{ImageGenerator, MatchImageContext};
+use crate::error::AppError;
 use crate::riot::{Platform, RiotClient};
+
+#[derive(Debug, thiserror::Error)]
+enum PollerError {
+    #[error(transparent)]
+    App(#[from] AppError),
+    #[error("Player {player_puuid} not found in match {match_id}")]
+    PlayerNotFoundInMatch {
+        player_puuid: String,
+        match_id: String,
+    },
+}
 
 pub async fn start_polling(
     db: Repository,
@@ -35,7 +47,7 @@ async fn poll_players(
     riot: &RiotClient,
     http: &Http,
     image_gen: &ImageGenerator,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), PollerError> {
     let players = db.get_all_tracked_players().await?;
 
     if players.is_empty() {
@@ -74,7 +86,7 @@ async fn check_player_match(
     http: &Http,
     image_gen: &ImageGenerator,
     player: &Player,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(), PollerError> {
     let platform: Platform = player.region.parse()?;
     let region = platform.to_region();
 
@@ -119,7 +131,10 @@ async fn check_player_match(
         .participants
         .iter()
         .find(|p| p.puuid == player.puuid)
-        .ok_or("Player not found in match participants")?;
+        .ok_or_else(|| PollerError::PlayerNotFoundInMatch {
+            player_puuid: player.puuid.clone(),
+            match_id: latest_match_id.to_string(),
+        })?;
 
     // Get current rank if ranked game
     let old_rank = if match_data.info.is_solo_queue() {
@@ -202,7 +217,7 @@ async fn fetch_rank_info(
     riot: &RiotClient,
     platform: Platform,
     puuid: &str,
-) -> Result<(Option<RankInfo>, Option<RankInfo>), Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<(Option<RankInfo>, Option<RankInfo>), PollerError> {
     let entries = riot.get_league_entries_by_puuid(platform, puuid).await?;
 
     let mut solo_rank = None;
