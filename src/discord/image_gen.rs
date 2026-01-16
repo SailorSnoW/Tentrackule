@@ -608,3 +608,32 @@ fn capitalize(s: &str) -> String {
         Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{RankInfo, calculate_lp_diff, format_damage, rank_to_lp};
+
+    #[test]
+    fn format_damage_suffixes() {
+        assert_eq!(format_damage(999), "999");
+        assert_eq!(format_damage(1_200), "1.2k");
+        assert_eq!(format_damage(1_000_000), "1.0M");
+    }
+
+    #[test]
+    fn rank_lp_math() {
+        let gold_ii = RankInfo {
+            tier: "GOLD".to_string(),
+            rank: "II".to_string(),
+            lp: 45,
+        };
+        let gold_i = RankInfo {
+            tier: "GOLD".to_string(),
+            rank: "I".to_string(),
+            lp: 10,
+        };
+        assert_eq!(rank_to_lp(&gold_ii), 1445);
+        assert_eq!(calculate_lp_diff(Some(&gold_ii), Some(&gold_i)), Some(65));
+        assert_eq!(calculate_lp_diff(None, Some(&gold_i)), None);
+    }
+}

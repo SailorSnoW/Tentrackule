@@ -180,7 +180,7 @@ async fn check_player_match(
         }
     };
 
-    let attachment = CreateAttachment::bytes(image_data, "match_result.png");
+    let image_data: Arc<[u8]> = image_data.into();
 
     // Get all guilds tracking this player
     let guilds = db.get_guilds_tracking_player(player.id).await?;
@@ -189,7 +189,8 @@ async fn check_player_match(
     for guild in guilds {
         if let Some(channel_id) = guild.alert_channel_id {
             let channel = ChannelId::new(channel_id as u64);
-            let message = CreateMessage::new().add_file(attachment.clone());
+            let attachment = CreateAttachment::bytes(image_data.as_ref(), "match_result.png");
+            let message = CreateMessage::new().add_file(attachment);
 
             if let Err(e) = channel.send_message(http, message).await {
                 error!(
