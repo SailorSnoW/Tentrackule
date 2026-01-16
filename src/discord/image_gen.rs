@@ -302,11 +302,10 @@ pub struct ImageGenerator {
 }
 
 impl ImageGenerator {
-    pub async fn new(ddragon_version: String) -> Self {
+    pub async fn new(ddragon_version: String) -> Result<Self, AppError> {
         let http = Client::builder()
             .user_agent("Tentrackule/2.0")
-            .build()
-            .expect("Failed to build HTTP client");
+            .build()?;
 
         // Load system fonts
         let mut fontdb = Database::new();
@@ -317,12 +316,12 @@ impl ImageGenerator {
         // Initialize cache (loads from disk)
         let cache = ImageCache::new().await;
 
-        Self {
+        Ok(Self {
             http,
             cache,
             ddragon_version,
             fontdb,
-        }
+        })
     }
 
     pub async fn generate_match_image(

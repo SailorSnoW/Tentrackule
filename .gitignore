@@ -7,3 +7,4 @@ target
 *.db
 .cache/
 CLAUDE.md
+AGENTS.md

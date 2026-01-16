@@ -20,20 +20,19 @@ pub struct RiotClient {
 }
 
 impl RiotClient {
-    pub fn new(api_key: String, rate_limit_per_second: NonZeroU32) -> Self {
+    pub fn new(api_key: String, rate_limit_per_second: NonZeroU32) -> Result<Self, AppError> {
         let quota = Quota::per_second(rate_limit_per_second);
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
         let http = Client::builder()
             .user_agent("Tentrackule/2.0")
-            .build()
-            .expect("Failed to build HTTP client");
+            .build()?;
 
-        Self {
+        Ok(Self {
             http,
             api_key,
             rate_limiter,
-        }
+        })
     }
 
     pub async fn get<T: DeserializeOwned>(&self, url: &str) -> Result<T, AppError> {

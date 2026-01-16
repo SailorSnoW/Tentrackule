@@ -67,11 +67,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let riot_client = RiotClient::new(
         config.riot_api_key.clone(),
         config.riot_rate_limit_per_second,
-    );
+    )?;
     tracing::info!("🔷 Riot API client initialized");
 
     // Initialize image generator
-    let image_gen = Arc::new(ImageGenerator::new(config.ddragon_version.clone()).await);
+    let image_gen = Arc::new(ImageGenerator::new(config.ddragon_version.clone()).await?);
     tracing::info!(version = %config.ddragon_version, "🖼️ Image generator initialized");
 
     // Create shared data for Discord bot
