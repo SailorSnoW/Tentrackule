@@ -70,17 +70,6 @@ impl Repository {
         Ok(player)
     }
 
-    pub async fn get_player_by_puuid(&self, puuid: &str) -> Result<Option<Player>, AppError> {
-        let columns = player_columns(None);
-        let player = sqlx::query_as::<_, Player>(&format!(
-            "SELECT {columns} FROM players WHERE puuid = ?"
-        ))
-        .bind(puuid)
-        .fetch_optional(&self.pool)
-        .await?;
-        Ok(player)
-    }
-
     pub async fn get_player_by_riot_id(
         &self,
         game_name: &str,
