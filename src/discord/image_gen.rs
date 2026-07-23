@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, SystemTime};
 
+use arc_swap::ArcSwap;
 use base64::Engine;
 use futures::stream::{self, StreamExt};
 use reqwest::Client;
@@ -19,9 +20,10 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 use tokio::fs;
 use tokio::sync::RwLock;
+use tokio::time::{MissedTickBehavior, interval};
 use tracing::{debug, info, trace, warn};
 
-use super::ddragon::DdragonData;
+use super::ddragon::{self, DDRAGON_CDN, DdragonData};
 use super::scorecard::{CARD_WIDTH_PX, ScorecardVm};
 use crate::config::USER_AGENT;
 use crate::db::{Player, RankInfo};
@@ -61,7 +63,12 @@ const FONT_FETCH_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebK
 const INLINED_SUBSETS: &[&str] = &["latin", "latin-ext"];
 
 // Cache configuration
-const CACHE_TTL_HOURS: u64 = 24 * 7; // 7 days
+/// TTL for *mutable* assets only — CommunityDragon `latest` (role/rank/objective
+/// icons), a rolling pointer that can change between patches. DDragon CDN assets
+/// are immutable and bypass the TTL entirely (see [`ImageCache::ttl_for`]), so
+/// the versioned set — and the big champion splash — is never re-downloaded on a
+/// schedule, only evicted under disk pressure (Phase 5.3).
+const MUTABLE_TTL: Duration = Duration::from_secs(24 * 60 * 60); // 24h
 /// Disk is the durable cache layer — sized for the full asset set.
 const DISK_MAX_SIZE_MB: u64 = 100;
 /// The in-RAM layer is only a bounded accelerator in front of the disk. Kept
@@ -83,14 +90,18 @@ struct MemoryEntry {
     last_access: AtomicU64,
 }
 
-/// Two-layer cache for Data Dragon images: a durable disk cache (the real
-/// cache, capped at [`DISK_MAX_SIZE_MB`]) fronted by a small bounded in-RAM LRU
-/// ([`MEMORY_MAX_SIZE_MB`]). Both layers honour a TTL; the memory layer fills
-/// lazily on first hit for a key and is never preloaded at boot.
+/// Two-layer cache for card images: a durable disk cache (the real cache, capped
+/// at [`DISK_MAX_SIZE_MB`]) fronted by a small bounded in-RAM LRU
+/// ([`MEMORY_MAX_SIZE_MB`]). Freshness is per-URL ([`ImageCache::ttl_for`]):
+/// immutable DDragon assets never expire by time (only the disk size cap evicts
+/// them), while mutable CommunityDragon `latest` assets carry [`MUTABLE_TTL`].
+/// The memory layer fills lazily on first hit for a key and is never preloaded
+/// at boot.
 pub struct ImageCache {
     memory_cache: RwLock<HashMap<String, MemoryEntry>>,
     cache_dir: PathBuf,
-    ttl: Duration,
+    /// TTL applied to mutable assets; immutable assets ignore it entirely.
+    mutable_ttl: Duration,
     disk_max_bytes: u64,
     memory_max_bytes: u64,
     /// Source of monotonic ticks for LRU ordering.
@@ -106,50 +117,31 @@ impl ImageCache {
             warn!(error = ?e, "🖼️ ⚠️ Failed to create cache directory");
         }
 
-        let cache = Self {
+        // Boot does no disk purge: immutable assets must survive indefinitely,
+        // and the few mutable ones are tiny — a stale one is caught lazily at
+        // read time (re-fetched past its TTL) and the disk stays bounded by the
+        // size cap, so a boot-time sweep would reclaim ~nothing.
+        Self {
             memory_cache: RwLock::new(HashMap::new()),
             cache_dir,
-            ttl: Duration::from_secs(CACHE_TTL_HOURS * 3600),
+            mutable_ttl: MUTABLE_TTL,
             disk_max_bytes: DISK_MAX_SIZE_MB * 1024 * 1024,
             memory_max_bytes: MEMORY_MAX_SIZE_MB * 1024 * 1024,
             clock: AtomicU64::new(0),
-        };
-
-        // Lazy memory layer: only sweep expired files at boot, never preload the
-        // disk cache into RAM (that was the OOM path on the 256 MB VM). Surviving
-        // files are promoted into memory on their first hit by `get_or_fetch`.
-        cache.purge_expired().await;
-
-        cache
+        }
     }
 
-    /// Delete cache files older than the TTL. The only disk work done at boot.
-    async fn purge_expired(&self) {
-        let mut entries = match fs::read_dir(&self.cache_dir).await {
-            Ok(entries) => entries,
-            Err(_) => return,
-        };
-
-        let mut expired_count = 0;
-
-        while let Ok(Some(entry)) = entries.next_entry().await {
-            let path = entry.path();
-
-            if path.extension().map(|e| e != "png").unwrap_or(true) {
-                continue;
-            }
-
-            if let Ok(metadata) = fs::metadata(&path).await
-                && let Ok(modified) = metadata.modified()
-                && modified.elapsed().unwrap_or(Duration::MAX) > self.ttl
-            {
-                let _ = fs::remove_file(&path).await;
-                expired_count += 1;
-            }
-        }
-
-        if expired_count > 0 {
-            info!(expired = expired_count, "🖼️ Purged expired cache files");
+    /// Freshness policy for a URL (Phase 5.3). DDragon CDN assets — the versioned
+    /// paths (`/cdn/<ver>/img/…`, pinned forever) *and* the versionless splash /
+    /// rune art (`/cdn/img/…`, stable per champion/rune) — are immutable: `None`,
+    /// so they never expire by time and are only ever dropped by the disk size
+    /// cap. Everything else (CommunityDragon `latest`) keeps [`MUTABLE_TTL`] so a
+    /// genuine upstream change is eventually re-fetched.
+    fn ttl_for(&self, url: &str) -> Option<Duration> {
+        if url.starts_with(DDRAGON_CDN) {
+            None
+        } else {
+            Some(self.mutable_ttl)
         }
     }
 
@@ -272,12 +264,16 @@ impl ImageCache {
 
     async fn get_or_fetch(&self, http: &Client, url: &str) -> Option<String> {
         let key = Self::cache_key(url);
+        // Freshness is per-URL: immutable DDragon assets never expire, mutable
+        // CommunityDragon assets carry the TTL. The key is `hash(url)`, so the
+        // policy derived from `url` is the right one for this entry in both layers.
+        let ttl = self.ttl_for(url);
 
         // 1. In-RAM accelerator.
         {
             let cache = self.memory_cache.read().await;
             if let Some(entry) = cache.get(&key)
-                && !expired(entry.created_at, self.ttl)
+                && is_fresh(entry.created_at, ttl)
             {
                 entry.last_access.store(self.tick(), Ordering::Relaxed);
                 trace!(url, "🖼️ Memory cache hit");
@@ -290,7 +286,7 @@ impl ImageCache {
         if let Ok(metadata) = fs::metadata(&cache_path).await
             && let Ok(modified) = metadata.modified()
         {
-            if modified.elapsed().unwrap_or(Duration::MAX) <= self.ttl {
+            if is_fresh(modified, ttl) {
                 if let Ok(bytes) = fs::read(&cache_path).await {
                     let data_uri = to_data_uri(&bytes);
                     self.store_in_memory(key, Arc::from(bytes), modified).await;
@@ -298,7 +294,7 @@ impl ImageCache {
                     return Some(data_uri);
                 }
             } else {
-                // Expired, remove
+                // Expired (only a mutable asset can reach here), remove.
                 let _ = fs::remove_file(&cache_path).await;
             }
         }
@@ -372,11 +368,23 @@ struct RendererConfig {
     token: String,
 }
 
+/// Interval between background Data Dragon table refreshes (Phase 5.2). A patch
+/// ships roughly every two weeks, so a daily check picks up a new champion well
+/// within a run while costing one tiny `versions.json` request a day.
+const DDRAGON_REFRESH_INTERVAL: Duration = Duration::from_secs(24 * 60 * 60);
+
 pub struct ImageGenerator {
     http: Client,
     cache: ImageCache,
-    /// Boot-time DDragon lookup tables (spell/rune/champion icon resolution).
-    ddragon: DdragonData,
+    /// DDragon lookup tables (spell/rune/champion icon resolution), hot-swapped
+    /// by the periodic refresh so a champion released mid-run stops 404-ing.
+    /// `ArcSwap` gives readers a lock-free snapshot while a refresh swaps in the
+    /// next patch's tables underneath them.
+    ddragon: ArcSwap<DdragonData>,
+    /// Pinned `DDRAGON_VERSION` override, if set. When present the refresh is a
+    /// no-op (the operator has taken manual control of the patch); when absent
+    /// the live patch is re-resolved each cycle.
+    ddragon_version_override: Option<String>,
     /// `None` when `RENDERER_URL`/`RENDERER_TOKEN` are unset — rendering then
     /// errors and the poller degrades to a text embed.
     renderer: Option<RendererConfig>,
@@ -389,16 +397,18 @@ pub struct ImageGenerator {
 
 impl ImageGenerator {
     pub async fn new(
-        ddragon_version: String,
+        ddragon_version_override: Option<String>,
         renderer_url: Option<String>,
         renderer_token: Option<String>,
     ) -> Result<Self, AppError> {
         let http = Client::builder().user_agent(USER_AGENT).build()?;
 
-        // Fetch the DDragon spell/rune/champion lookup tables once (best-effort).
-        let ddragon = DdragonData::load(&http, &ddragon_version).await;
+        // Resolve the live patch (or honour a pinned override), then fetch the
+        // DDragon spell/rune/champion lookup tables for it (best-effort).
+        let version = ddragon::resolve_version(&http, ddragon_version_override.as_deref()).await;
+        let ddragon = DdragonData::load(&http, &version).await;
 
-        // Initialize cache (lazy; only purges expired files at boot)
+        // Initialize cache (lazy; no boot purge).
         let cache = ImageCache::new().await;
 
         let renderer = match (renderer_url, renderer_token) {
@@ -418,10 +428,53 @@ impl ImageGenerator {
         Ok(Self {
             http,
             cache,
-            ddragon,
+            ddragon: ArcSwap::from_pointee(ddragon),
+            ddragon_version_override,
             renderer,
             latin_font_css: RwLock::new(None),
         })
+    }
+
+    /// The Data Dragon patch the lookup tables are currently built for.
+    pub fn ddragon_version(&self) -> String {
+        self.ddragon.load().version().to_string()
+    }
+
+    /// Periodically re-resolve the live patch and hot-swap the lookup tables so a
+    /// champion released mid-run stops 404-ing on its assets/mastery, with no
+    /// redeploy (Phase 5.2). Runs until the process exits; spawn it on the shared
+    /// `Arc<ImageGenerator>`.
+    pub async fn run_ddragon_refresh(self: Arc<Self>) {
+        let mut ticker = interval(DDRAGON_REFRESH_INTERVAL);
+        ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+        // The first tick fires immediately; skip it since the tables are already
+        // fresh from boot, so the first real refresh is one interval out.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            self.refresh_ddragon().await;
+        }
+    }
+
+    /// One refresh pass: re-resolve the live patch and, only if it changed, reload
+    /// and hot-swap the tables. A pinned override is left untouched, and a failed
+    /// version lookup keeps the current tables — we never downgrade the running
+    /// patch on a transient blip.
+    async fn refresh_ddragon(&self) {
+        if self.ddragon_version_override.is_some() {
+            return;
+        }
+        let Some(latest) = ddragon::fetch_latest_version(&self.http).await else {
+            return; // logged inside; keep serving the current tables
+        };
+        let current = self.ddragon_version();
+        if latest == current {
+            debug!(version = %current, "🖼️ Data Dragon patch unchanged; tables kept");
+            return;
+        }
+        let fresh = DdragonData::load(&self.http, &latest).await;
+        self.ddragon.store(Arc::new(fresh));
+        info!(from = %current, to = %latest, "🖼️ Data Dragon tables hot-swapped to new patch");
     }
 
     /// Filename for the rendered card attachment. Extension tracks
@@ -432,7 +485,7 @@ impl ImageGenerator {
     /// DDragon tables, for the poller's champion-mastery lookup. `None` when the
     /// champion index failed to load or the name is unknown.
     pub fn champion_id(&self, champion_name: &str) -> Option<i64> {
-        self.ddragon.champion_id(champion_name)
+        self.ddragon.load().champion_id(champion_name)
     }
 
     /// Build the scorecard HTML and render it to an image via the remote renderer.
@@ -440,7 +493,10 @@ impl ImageGenerator {
         &self,
         ctx: &MatchImageContext<'_>,
     ) -> Result<Vec<u8>, AppError> {
-        let mut vm = ScorecardVm::from_context(ctx, &self.ddragon);
+        // Snapshot the current tables: a concurrent refresh may swap in the next
+        // patch's tables, but this card renders consistently against one snapshot.
+        let ddragon = self.ddragon.load_full();
+        let mut vm = ScorecardVm::from_context(ctx, &ddragon);
         self.inline_assets(&mut vm).await;
 
         // Font strategy: a pure-Latin name gets the invariant inlined Latin faces
@@ -787,9 +843,14 @@ struct WaitForFunction {
     timeout: u32,
 }
 
-/// Whether a cache entry created at `created_at` has outlived `ttl`.
-fn expired(created_at: SystemTime, ttl: Duration) -> bool {
-    created_at.elapsed().unwrap_or(Duration::MAX) > ttl
+/// Whether a cache entry created at `created_at` is still fresh under `ttl`.
+/// `None` marks an immutable asset (versioned or versionless DDragon): always
+/// fresh — only the disk size cap ever removes it.
+fn is_fresh(created_at: SystemTime, ttl: Option<Duration>) -> bool {
+    match ttl {
+        None => true,
+        Some(ttl) => created_at.elapsed().unwrap_or(Duration::MAX) <= ttl,
+    }
 }
 
 /// Base64 `data:` URI for image bytes, with a MIME type sniffed from the magic
@@ -838,11 +899,36 @@ mod tests {
         ImageCache {
             memory_cache: RwLock::new(HashMap::new()),
             cache_dir: dir,
-            ttl: Duration::from_secs(3600),
+            mutable_ttl: Duration::from_secs(3600),
             disk_max_bytes: disk_mb * 1024 * 1024,
             memory_max_bytes: mem_mb * 1024 * 1024,
             clock: AtomicU64::new(0),
         }
+    }
+
+    /// Immutable DDragon assets bypass the TTL (size-eviction only); everything
+    /// else (CommunityDragon `latest`) carries the mutable TTL.
+    #[test]
+    fn ttl_for_classifies_ddragon_as_immutable() {
+        let cache = temp_cache("ttl", 100, 24);
+        // Versioned DDragon (spell/item/square) and versionless DDragon
+        // (splash/rune art) are both immutable.
+        assert_eq!(
+            cache.ttl_for("https://ddragon.leagueoflegends.com/cdn/16.1.1/img/item/1001.png"),
+            None
+        );
+        assert_eq!(
+            cache.ttl_for(
+                "https://ddragon.leagueoflegends.com/cdn/img/champion/loading/Ahri_0.jpg"
+            ),
+            None
+        );
+        // CommunityDragon `latest` is a rolling pointer → keeps the TTL.
+        assert_eq!(
+            cache.ttl_for("https://raw.communitydragon.org/latest/.../position-top.svg"),
+            Some(cache.mutable_ttl)
+        );
+        let _ = std::fs::remove_dir_all(&cache.cache_dir);
     }
 
     #[test]

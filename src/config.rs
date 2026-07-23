@@ -17,7 +17,11 @@ pub struct Config {
     /// Second Riot rate-limit window. Personal keys allow 20 req/s *and* 100
     /// req/2 min; the per-second quota alone doesn't cover the slower window.
     pub riot_rate_limit_per_two_min: NonZeroU32,
-    pub ddragon_version: String,
+    /// Emergency override for the Data Dragon patch. Normally unset: the version
+    /// is auto-resolved from `versions.json` at boot and on the periodic refresh
+    /// (Phase 5). Set it only to pin a specific patch when auto-resolution must
+    /// be forced (e.g. a fresh patch broke assets).
+    pub ddragon_version_override: Option<String>,
     /// Base URL of the Browserless HTML→PNG renderer, e.g.
     /// `http://tentrackule-renderer.internal:3000`. When unset, the bot falls
     /// back to a text embed instead of a rendered card (see `image_gen`).
@@ -33,7 +37,6 @@ impl Config {
         const DEFAULT_POLLING_INTERVAL_SECS: u64 = 60;
         const DEFAULT_RIOT_RATE_LIMIT_PER_SECOND: u32 = 20;
         const DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN: u32 = 100;
-        const DEFAULT_DDRAGON_VERSION: &str = "16.1.1";
 
         let discord_token = env::var("DISCORD_TOKEN")
             .map_err(|_| AppError::Config("DISCORD_TOKEN must be set".into()))?;
@@ -59,8 +62,10 @@ impl Config {
             DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN,
         );
 
-        let ddragon_version =
-            env::var("DDRAGON_VERSION").unwrap_or_else(|_| DEFAULT_DDRAGON_VERSION.into());
+        // Unset by default → the patch is auto-resolved from DDragon at boot.
+        // A blank value is treated as unset so an empty `fly.toml` entry doesn't
+        // pin an invalid patch.
+        let ddragon_version_override = non_empty_env("DDRAGON_VERSION");
 
         // Optional: only set in prod. Empty strings are treated as unset so a
         // blank `fly.toml` entry doesn't produce a broken URL.
@@ -74,7 +79,7 @@ impl Config {
             polling_interval_secs,
             riot_rate_limit_per_second,
             riot_rate_limit_per_two_min,
-            ddragon_version,
+            ddragon_version_override,
             renderer_url,
             renderer_token,
         })

@@ -57,3 +57,5 @@ futures = "0.3"
 base64 = "0.22"
 # Collision-safe 128-bit cache keys for inlined assets
 sha2 = "0.10"
+# Lock-free hot-swap of the Data Dragon lookup tables on the 24h patch refresh
+arc-swap = "1"

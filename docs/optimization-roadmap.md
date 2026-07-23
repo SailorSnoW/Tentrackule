@@ -1,6 +1,6 @@
 # Roadmap — Optimisation globale (mémoire, API Riot, cache, infra)
 
-> Statut : **en cours** (Phases 1–2 + 3.A/3.B/3.C + **4** implémentées — clippy/tests verts ; JPEG à valider visuellement via `/dev_test_alert`, cold starts scale-to-zero à observer après `fly deploy -c fly.renderer.toml`, cadence adaptative + baisse de volume à confirmer en prod via les logs) · issu de l'audit d'architecture du 2026-07-23.
+> Statut : **en cours** (Phases 1–2 + 3.A/3.B/3.C + **4** + **5** implémentées — clippy/tests verts ; JPEG à valider visuellement via `/dev_test_alert`, cold starts scale-to-zero à observer après `fly deploy -c fly.renderer.toml`, cadence adaptative + baisse de volume à confirmer en prod via les logs ; auto-résolution DDragon + refresh 24 h à observer sur un vrai changement de patch) · issu de l'audit d'architecture du 2026-07-23.
 > Périmètre : consommation de ressources, volume d'appels API, stratégie de cache, coût infra. Aucun changement fonctionnel visible côté Discord (hors amélioration de justesse en Phase 1 et latence de détection accrue pour les joueurs inactifs en Phase 4, voulue).
 > Dernière mise à jour : 2026-07-24.
 
@@ -89,11 +89,11 @@ Objectif : décorréler le volume d'appels du nombre de joueurs suivis, et rendr
 
 Objectif : supprimer le redeploy manuel à chaque patch LoL et les 404 en cours de run.
 
-- [ ] 🟡 **Résoudre la version au boot** via `https://ddragon.leagueoflegends.com/api/versions.json` (fallback : `DDRAGON_VERSION` env, qui devient un override de secours).
-- [ ] 🟡 **Refresh périodique (24 h) des tables `DdragonData`** — chargées une seule fois au boot aujourd'hui : un champion sorti en cours de run 404 sur tous ses assets/mastery. Nécessite de rendre les tables remplaçables à chaud (`ArcSwap` ou `RwLock`).
-- [ ] 🟢 **TTL par classe d'URL dans `ImageCache`** — les URLs DDragon **versionnées** (`/16.1.1/img/…`) sont immuables : pas de TTL (éviction par taille uniquement) au lieu de re-télécharger tout le set chaque semaine. Garder un TTL court uniquement pour CommunityDragon `latest`.
+- [x] 🟡 **Résoudre la version au boot** via `https://ddragon.leagueoflegends.com/api/versions.json` (fallback : `DDRAGON_VERSION` env, qui devient un override de secours). *→ `ddragon::resolve_version` : un `DDRAGON_VERSION` non vide force le patch (override d'urgence, court-circuite le réseau) ; sinon `fetch_latest_version` prend la 1ʳᵉ entrée de `versions.json` ; en dernier recours `DEFAULT_DDRAGON_VERSION` compilé en dur. `Config.ddragon_version` → `ddragon_version_override: Option<String>` ; `DDRAGON_VERSION` retiré de `fly.toml`/`.env.example` pour que l'auto-résolution soit le chemin vivant.*
+- [x] 🟡 **Refresh périodique (24 h) des tables `DdragonData`** — chargées une seule fois au boot aujourd'hui : un champion sorti en cours de run 404 sur tous ses assets/mastery. Nécessite de rendre les tables remplaçables à chaud (`ArcSwap` ou `RwLock`). *→ `ImageGenerator.ddragon: ArcSwap<DdragonData>` (lecture lock-free côté rendu/mastery). `run_ddragon_refresh` (tick 24 h, `Delay`, 1ᵉʳ tick immédiat consommé) → `refresh_ddragon` : re-résout le patch vivant et ne recharge/hot-swap **que si** le patch a changé. Override épinglé = no-op ; échec de lookup = on garde les tables courantes (jamais de downgrade sur un blip). Spawn dans `main.rs`.*
+- [x] 🟢 **TTL par classe d'URL dans `ImageCache`** — les URLs DDragon **versionnées** (`/16.1.1/img/…`) sont immuables : pas de TTL (éviction par taille uniquement) au lieu de re-télécharger tout le set chaque semaine. Garder un TTL court uniquement pour CommunityDragon `latest`. *→ `ImageCache::ttl_for` : tout le CDN DDragon (`ddragon.leagueoflegends.com/cdn` — versionné **et** versionless splash/runes, y compris le gros splash) → `None` (immuable, éviction par taille seule) ; le reste (CommunityDragon `latest`, pointeur roulant) → `MUTABLE_TTL = 24 h`. `is_fresh(created_at, Option<Duration>)` remplace `expired`. `purge_expired` au boot supprimé : la fraîcheur des mutables est gérée à la lecture (re-fetch passé le TTL), le disque reste borné par le plafond de taille. Le cache vit sur le volume Fly `/data` (persiste entre deploys), donc le gain est réel.*
 
-**Critère de sortie :** un patch LoL passe sans aucune intervention ; plus aucun re-téléchargement hebdomadaire d'assets versionnés.
+**Critère de sortie :** un patch LoL passe sans aucune intervention ; plus aucun re-téléchargement hebdomadaire d'assets versionnés. *(Rempli : auto-résolution + refresh 24 h ; le splash et tous les assets DDragon ne réexpirent plus par le temps.)*
 
 ---
 

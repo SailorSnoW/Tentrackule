@@ -1,10 +1,11 @@
-//! Phase 3 of the HTML scorecard roadmap: boot-time Data Dragon lookup tables.
+//! Data Dragon lookup tables + patch-version resolution.
 //!
 //! The match card needs to turn Riot's *numeric* summoner-spell keys and rune
 //! ids into DDragon asset paths (e.g. `4` → `SummonerFlash`, keystone `8010` →
 //! `perk-images/Styles/.../Conqueror.png`). Those mappings only live in DDragon's
-//! `summoner.json` / `runesReforged.json`, so we fetch and index them once at
-//! start-up (alongside the configured `DDRAGON_VERSION`) and keep them in memory.
+//! `summoner.json` / `runesReforged.json`, so we fetch and index them for the
+//! live patch (see [`resolve_version`]) and keep them in memory, hot-swapped on a
+//! periodic refresh so a champion released mid-run stops 404-ing (Phase 5.2).
 //!
 //! Fetching is best-effort: on any failure we log and fall back to empty tables,
 //! which just omits the spell/rune icons (an unmet `sc-if`) rather than breaking
@@ -18,6 +19,68 @@ use tracing::{info, warn};
 
 /// Data Dragon CDN root (no trailing slash).
 pub const DDRAGON_CDN: &str = "https://ddragon.leagueoflegends.com/cdn";
+
+/// Newest-first JSON array of every published patch version.
+const VERSIONS_URL: &str = "https://ddragon.leagueoflegends.com/api/versions.json";
+
+/// Last-resort patch when auto-resolution fails at boot and no `DDRAGON_VERSION`
+/// override is set. Only reached if Riot's `versions.json` is unreachable during
+/// start-up — the steady-state path resolves the live patch (see
+/// [`resolve_version`]).
+pub const DEFAULT_DDRAGON_VERSION: &str = "16.1.1";
+
+/// Resolve the Data Dragon patch to load (Phase 5.1). Zero-maintenance by
+/// default: fetch the live patch from `versions.json`. An explicit
+/// `DDRAGON_VERSION` (`override_version`) forces that patch and skips the lookup
+/// — an emergency lever for pinning when a fresh patch breaks assets. If the
+/// lookup fails and nothing is pinned, fall back to [`DEFAULT_DDRAGON_VERSION`].
+pub async fn resolve_version(http: &Client, override_version: Option<&str>) -> String {
+    if let Some(version) = override_version {
+        info!(version, "🖼️ Using pinned DDRAGON_VERSION override");
+        return version.to_string();
+    }
+    match fetch_latest_version(http).await {
+        Some(version) => {
+            info!(version, "🖼️ Resolved live Data Dragon patch");
+            version
+        }
+        None => {
+            warn!(
+                version = DEFAULT_DDRAGON_VERSION,
+                "🖼️ ⚠️ Version lookup failed; falling back to the compiled-in patch"
+            );
+            DEFAULT_DDRAGON_VERSION.to_string()
+        }
+    }
+}
+
+/// The newest published patch (the first entry of `versions.json`), or `None` on
+/// any network/parse failure or an empty list — so callers keep serving the
+/// patch they already have instead of downgrading on a transient blip.
+pub async fn fetch_latest_version(http: &Client) -> Option<String> {
+    match fetch_versions(http).await {
+        Ok(versions) => {
+            let latest = versions.into_iter().next();
+            if latest.is_none() {
+                warn!("🖼️ ⚠️ Data Dragon versions.json was empty");
+            }
+            latest
+        }
+        Err(e) => {
+            warn!(error = %e, "🖼️ ⚠️ Failed to fetch Data Dragon versions.json");
+            None
+        }
+    }
+}
+
+async fn fetch_versions(http: &Client) -> Result<Vec<String>, reqwest::Error> {
+    http.get(VERSIONS_URL)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await
+}
 
 /// In-memory Data Dragon lookup tables + the CDN version they were built for.
 #[derive(Debug, Clone, Default)]
@@ -327,5 +390,31 @@ mod tests {
         // Exact keys pass straight through; unknowns fall back untouched.
         assert_eq!(d.champion_key("Ahri"), "Ahri");
         assert_eq!(d.champion_key("Unknown"), "Unknown");
+    }
+
+    /// An explicit override short-circuits resolution: it's returned verbatim and
+    /// no network call is made (so this test needs none).
+    #[tokio::test]
+    async fn resolve_version_prefers_explicit_override() {
+        let http = Client::new();
+        assert_eq!(resolve_version(&http, Some("99.9.9")).await, "99.9.9");
+    }
+
+    /// Opt-in (network) check that live resolution returns a plausible patch
+    /// string. Run with:
+    ///   cargo test --quiet resolves_live_version -- --ignored
+    #[tokio::test]
+    #[ignore = "hits the network (Data Dragon versions.json)"]
+    async fn resolves_live_version() {
+        let http = Client::new();
+        let version = fetch_latest_version(&http).await.expect("a live patch");
+        // A DDragon patch looks like `16.1.1` — at least two dot-separated
+        // numeric-ish components.
+        assert!(
+            version.split('.').count() >= 2,
+            "unexpected version shape: {version}"
+        );
+        // With no override, resolution yields exactly that live patch.
+        assert_eq!(resolve_version(&http, None).await, version);
     }
 }

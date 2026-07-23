@@ -79,20 +79,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     tracing::info!("🔷 Riot API client initialized");
 
-    // Initialize image generator
+    // Initialize image generator. The DDragon patch is auto-resolved at boot
+    // (unless DDRAGON_VERSION pins it), so read it back for the log line.
     let image_gen = Arc::new(
         ImageGenerator::new(
-            config.ddragon_version.clone(),
+            config.ddragon_version_override.clone(),
             config.renderer_url.clone(),
             config.renderer_token.clone(),
         )
         .await?,
     );
     tracing::info!(
-        version = %config.ddragon_version,
+        version = %image_gen.ddragon_version(),
         renderer = config.renderer_url.is_some(),
         "🖼️ Image generator initialized"
     );
+
+    // Keep the DDragon tables current: re-resolve the live patch every 24h and
+    // hot-swap them, so a champion released mid-run doesn't 404 (no redeploy).
+    tokio::spawn(Arc::clone(&image_gen).run_ddragon_refresh());
+    tracing::info!("🖼️ DDragon refresh task spawned");
 
     // Create shared data for Discord bot
     let data = Data {

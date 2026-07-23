@@ -10,7 +10,9 @@ primary_region = 'cdg'
 
 [env]
   DATABASE_URL = 'sqlite:/data/tentrackule.db'
-  DDRAGON_VERSION = '16.1.1'
+  # DDRAGON_VERSION is intentionally unset: the patch is auto-resolved from
+  # ddragon versions.json at boot and refreshed every 24h. Set it only to pin a
+  # specific patch in an emergency (a fresh patch breaking assets).
   LOG_FORMAT = 'json'
   POLLING_INTERVAL_SECS = '60'
   RUST_LOG = 'info,tentrackule=debug'
