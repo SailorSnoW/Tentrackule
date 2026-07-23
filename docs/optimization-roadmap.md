@@ -1,7 +1,7 @@
 # Roadmap — Optimisation globale (mémoire, API Riot, cache, infra)
 
-> Statut : **en cours** (Phases 1–2 + 3.A/3.B/3.C implémentées — clippy/tests verts ; JPEG à valider visuellement via `/dev_test_alert`, cold starts scale-to-zero à observer après `fly deploy -c fly.renderer.toml`) · issu de l'audit d'architecture du 2026-07-23.
-> Périmètre : consommation de ressources, volume d'appels API, stratégie de cache, coût infra. Aucun changement fonctionnel visible côté Discord (hors amélioration de justesse en Phase 1).
+> Statut : **en cours** (Phases 1–2 + 3.A/3.B/3.C + **4** implémentées — clippy/tests verts ; JPEG à valider visuellement via `/dev_test_alert`, cold starts scale-to-zero à observer après `fly deploy -c fly.renderer.toml`, cadence adaptative + baisse de volume à confirmer en prod via les logs) · issu de l'audit d'architecture du 2026-07-23.
+> Périmètre : consommation de ressources, volume d'appels API, stratégie de cache, coût infra. Aucun changement fonctionnel visible côté Discord (hors amélioration de justesse en Phase 1 et latence de détection accrue pour les joueurs inactifs en Phase 4, voulue).
 > Dernière mise à jour : 2026-07-24.
 
 ---
@@ -76,12 +76,12 @@ Objectif : sortir du « performance-1x 2 Go allumé 24/7 » (~25–30 $/mois éc
 
 Objectif : décorréler le volume d'appels du nombre de joueurs suivis, et rendre le client auto-régulé face aux limites Riot.
 
-- [ ] 🔴 **Polling adaptatif par activité** — le levier principal (volume ÷ 3–10). Cadence dérivée de l'ancienneté de la dernière partie vue : partie < 2 h → 60 s · sinon → 3–5 min · inactif > 7 j → 15 min. L'ancienneté peut se dériver de `match_results.created_at` (aucun appel supplémentaire). Toute nouvelle partie détectée ramène immédiatement le joueur à la cadence rapide.
-- [ ] 🟡 **Honorer `Retry-After` sur 429** — `client.rs` logge le 429 mais ne lit pas le header et ne retente pas. Retry borné (1–2 tentatives) après le délai indiqué ; idem retry simple sur 5xx transitoires.
-- [ ] 🟡 **Deuxième fenêtre de rate limit (100 req / 2 min)** — le governor n'applique que 20/s alors que les clés personnelles ont aussi une fenêtre 2 min. Second `Quota` combiné (ou, plus ambitieux, pilotage par les headers `X-App-Rate-Limit-Count`).
-- [ ] 🟡 **Boucle joueurs concurrente** — `poll_players` est séquentiel ; `buffer_unordered(3–5)` raccourcit les cycles quand N grandit. Le governor borne déjà le débit sortant, la concurrence ne fait que masquer la latence réseau.
+- [x] 🔴 **Polling adaptatif par activité** — le levier principal (volume ÷ 3–10). Cadence dérivée de l'ancienneté de la dernière partie vue : partie < 2 h → 60 s · sinon → 3–5 min · inactif > 7 j → 15 min. L'ancienneté peut se dériver de `match_results.created_at` (aucun appel supplémentaire). Toute nouvelle partie détectée ramène immédiatement le joueur à la cadence rapide. *→ `cadence_for`/`poll_due` (`match_poller.rs`) : tiers `ACTIVE_WINDOW = 2 h` → tick (60 s), `< DORMANT_WINDOW = 7 j` → `IDLE_CADENCE = 5 min`, sinon `DORMANT_CADENCE = 15 min` (le tick sert de plancher). `PollSchedule` (map en mémoire `player_id → Instant`, éphémère : re-sync complet au boot) sélectionne les joueurs dus par tick. Ancienneté = `get_tracked_players_with_activity` → `COALESCE(MAX(match_results.created_at), players.created_at)` (aucun appel Riot ; un joueur fraîchement suivi lit « actif » via son `created_at`). Une nouvelle partie insère une ligne `match_results` (created_at ≈ now) → retour tier actif au cycle suivant, sans reset explicite.*
+- [x] 🟡 **Honorer `Retry-After` sur 429** — `client.rs` logge le 429 mais ne lit pas le header et ne retente pas. Retry borné (1–2 tentatives) après le délai indiqué ; idem retry simple sur 5xx transitoires. *→ `RiotClient::get` est une boucle de retry (`MAX_ATTEMPTS = 3` = 1 + 2 retries). 429 : `retry_after` lit le header (secondes), plafonné à `MAX_RETRY_DELAY = 120 s`, défaut `DEFAULT_RETRY_DELAY = 2 s`. 5xx : `SERVER_ERROR_RETRY_DELAY = 1 s`. 404/403/autres 4xx restent terminaux au 1ᵉʳ coup. Les deux limiters sont re-franchis avant chaque tentative.*
+- [x] 🟡 **Deuxième fenêtre de rate limit (100 req / 2 min)** — le governor n'applique que 20/s alors que les clés personnelles ont aussi une fenêtre 2 min. Second `Quota` combiné (ou, plus ambitieux, pilotage par les headers `X-App-Rate-Limit-Count`). *→ `limiter_per_window` = `Quota::with_period(120 s / N).allow_burst(N)` (N = `RIOT_RATE_LIMIT_PER_TWO_MIN`, défaut 100) en plus de `limiter_per_second`. `get` franchit les deux (fenêtre lente d'abord). Config `riot_rate_limit_per_two_min` + `.env.example`/README.*
+- [x] 🟡 **Boucle joueurs concurrente** — `poll_players` est séquentiel ; `buffer_unordered(3–5)` raccourcit les cycles quand N grandit. Le governor borne déjà le débit sortant, la concurrence ne fait que masquer la latence réseau. *→ `for_each_concurrent(POLL_CONCURRENCY = 5)` sur les joueurs dus (`futures::stream`). Erreurs par joueur contenues (loggées, jamais propagées) ; le rate limiter borne le débit réel.*
 
-**Critère de sortie :** volume d'appels/jour publié dans les logs (cf. Phase 6) en baisse nette à joueurs constants ; zéro erreur 429 non gérée sur un mois.
+**Critère de sortie :** volume d'appels/jour publié dans les logs (cf. Phase 6) en baisse nette à joueurs constants ; zéro erreur 429 non gérée sur un mois. *(Mesure fine en attente de la ligne de stats Phase 6 ; le retry 429 borné couvre déjà le second critère.)*
 
 ---
 

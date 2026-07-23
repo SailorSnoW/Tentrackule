@@ -59,8 +59,9 @@ Set via environment (a `.env` file is loaded in dev — see `.env.example`):
 | `DISCORD_TOKEN` | ✅ | — | Bot token |
 | `RIOT_API_KEY` | ✅ | — | Riot API key |
 | `DATABASE_URL` | | `sqlite:tentrackule.db` | SQLite connection string |
-| `POLLING_INTERVAL_SECS` | | `60` | Match-poll cadence |
-| `RIOT_RATE_LIMIT_PER_SECOND` | | `20` | Client-side rate limit |
+| `POLLING_INTERVAL_SECS` | | `60` | Base poll tick / fastest cadence; idle players are polled less often (activity-adaptive) |
+| `RIOT_RATE_LIMIT_PER_SECOND` | | `20` | Client-side rate limit (fast window) |
+| `RIOT_RATE_LIMIT_PER_TWO_MIN` | | `100` | Client-side rate limit (2-minute window) |
 | `DDRAGON_VERSION` | | `16.1.1` | Data Dragon version for assets |
 | `RENDERER_URL` | | *(unset)* | Browserless base URL; unset → text-embed fallback |
 | `RENDERER_TOKEN` | | *(unset)* | Renderer auth token (secret) |

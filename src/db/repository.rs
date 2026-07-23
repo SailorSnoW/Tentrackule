@@ -1,6 +1,6 @@
 use sqlx::SqlitePool;
 
-use super::models::{Guild, Player, RankInfo};
+use super::models::{Guild, Player, RankInfo, TrackedPlayer};
 use crate::error::AppError;
 
 const PLAYER_COLUMN_NAMES: [&str; 12] = [
@@ -89,11 +89,21 @@ impl Repository {
         Ok(player)
     }
 
-    pub async fn get_all_tracked_players(&self) -> Result<Vec<Player>, AppError> {
+    /// Every player tracked by at least one alert-enabled guild, each carrying
+    /// the unix-seconds timestamp of their most recent activity. Activity is the
+    /// newest recorded match result, falling back to when the player was first
+    /// added (so a freshly-tracked player reads as "active" and is polled fast
+    /// until their first game, rather than looking dormant). Drives the poller's
+    /// adaptive cadence without any extra Riot call.
+    pub async fn get_tracked_players_with_activity(&self) -> Result<Vec<TrackedPlayer>, AppError> {
         let columns = player_columns(Some("p"));
-        let players = sqlx::query_as::<_, Player>(&format!(
+        let players = sqlx::query_as::<_, TrackedPlayer>(&format!(
             r#"
-            SELECT DISTINCT {columns}
+            SELECT DISTINCT {columns},
+                COALESCE(
+                    (SELECT MAX(mr.created_at) FROM match_results mr WHERE mr.player_id = p.id),
+                    p.created_at
+                ) AS last_activity_secs
             FROM players p
             INNER JOIN guild_players gp ON p.id = gp.player_id
             INNER JOIN guilds g ON gp.guild_id = g.id
@@ -324,5 +334,98 @@ impl Repository {
         .fetch_optional(&self.pool)
         .await?;
         Ok(exists.is_some())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sqlx::sqlite::SqlitePoolOptions;
+
+    /// A migrated, single-connection in-memory database. `sqlite::memory:` gives
+    /// each connection its own database, so the pool is pinned to one connection
+    /// to keep every query on the same in-memory schema.
+    async fn memory_repo() -> Repository {
+        let pool = SqlitePoolOptions::new()
+            .max_connections(1)
+            .min_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("open in-memory sqlite");
+        crate::db::run_migrations(&pool).await.expect("migrations");
+        Repository::new(pool)
+    }
+
+    /// The activity timestamp falls back to `players.created_at` when no game is
+    /// recorded, then tracks the newest `match_results.created_at` once games are.
+    /// Also exercises the `#[sqlx(flatten)]` mapping of the joined row.
+    #[tokio::test]
+    async fn activity_falls_back_to_created_at_then_tracks_matches() {
+        let repo = memory_repo().await;
+
+        let player = repo
+            .get_or_create_player("puuid-1", "Alice", "EUW", "EUW1")
+            .await
+            .unwrap();
+        repo.set_guild_alert_channel(1, 100).await.unwrap();
+        repo.add_player_to_guild(1, player.id, 7).await.unwrap();
+
+        // No recorded games yet → activity is the player's own creation time.
+        let tracked = repo.get_tracked_players_with_activity().await.unwrap();
+        assert_eq!(tracked.len(), 1);
+        assert_eq!(tracked[0].player.id, player.id);
+        assert_eq!(tracked[0].player.puuid, "puuid-1");
+        let fallback = tracked[0].last_activity_secs;
+        assert!(
+            fallback > 0,
+            "fallback activity should be players.created_at"
+        );
+
+        // Record two games; the newest created_at must win the COALESCE/MAX.
+        for (mid, ts) in [("EUW1_1", fallback + 10_000), ("EUW1_2", fallback + 5_000)] {
+            sqlx::query(
+                "INSERT INTO match_results (player_id, match_id, won, queue_id, created_at) \
+                 VALUES (?, ?, 1, 420, ?)",
+            )
+            .bind(player.id)
+            .bind(mid)
+            .bind(ts)
+            .execute(&repo.pool)
+            .await
+            .unwrap();
+        }
+
+        let tracked = repo.get_tracked_players_with_activity().await.unwrap();
+        assert_eq!(tracked[0].last_activity_secs, fallback + 10_000);
+    }
+
+    /// A player is only returned once their guild has an alert channel — the
+    /// poller relies on this set to prune its in-memory schedule.
+    #[tokio::test]
+    async fn only_alert_enabled_guilds_yield_tracked_players() {
+        let repo = memory_repo().await;
+        let player = repo
+            .get_or_create_player("puuid-2", "Bob", "NA", "NA1")
+            .await
+            .unwrap();
+        repo.add_player_to_guild(2, player.id, 7).await.unwrap();
+
+        // Guild has no alert channel → excluded.
+        assert!(
+            repo.get_tracked_players_with_activity()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+
+        // Set the channel → now tracked.
+        repo.set_guild_alert_channel(2, 200).await.unwrap();
+        assert_eq!(
+            repo.get_tracked_players_with_activity()
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
     }
 }

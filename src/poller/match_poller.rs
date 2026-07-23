@@ -1,14 +1,107 @@
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use futures::stream::{self, StreamExt};
 use poise::serenity_prelude::{ChannelId, CreateAttachment, CreateEmbed, CreateMessage, Http};
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{Span, debug, error, info, instrument, warn};
 
-use crate::db::{Player, RankInfo, Repository};
+use crate::db::{Player, RankInfo, Repository, TrackedPlayer};
 use crate::discord::image_gen::{ImageGenerator, MasteryInfo, MatchImageContext};
 use crate::error::AppError;
 use crate::riot::{Platform, RiotClient};
+
+// === Activity-adaptive polling cadence ===
+//
+// The volume of Riot calls is dominated by the per-cycle `match-ids` request for
+// every tracked player. Rather than polling everyone at the fast rate all day, we
+// derive each player's cadence from how long ago they last played: only players
+// likely to have a fresh game are checked every tick. Any newly-detected game
+// records a `match_results` row (created_at ≈ now), which snaps the player back
+// to the active tier on the next cycle — no explicit "reset" needed.
+
+/// A game within this window marks the player "active": polled every tick.
+const ACTIVE_WINDOW: Duration = Duration::from_secs(2 * 60 * 60); // 2h
+/// Past [`ACTIVE_WINDOW`] but within this, "idle"; beyond it, "dormant".
+const DORMANT_WINDOW: Duration = Duration::from_secs(7 * 24 * 60 * 60); // 7d
+
+/// Re-check cadence for an idle player (no game in the last 2h).
+const IDLE_CADENCE: Duration = Duration::from_secs(5 * 60);
+/// Re-check cadence for a dormant player (no game in over a week).
+const DORMANT_CADENCE: Duration = Duration::from_secs(15 * 60);
+
+/// How many players to poll concurrently. The rate limiter still bounds the true
+/// outbound request rate; concurrency only overlaps network latency so a growing
+/// roster doesn't stretch each cycle linearly.
+const POLL_CONCURRENCY: usize = 5;
+
+/// Cadence a player should be polled at, given how long since their last known
+/// activity. `active_cadence` (the loop's tick) is both the fast-tier cadence and
+/// a floor: we never claim to poll more often than the loop actually wakes.
+fn cadence_for(activity_age: Duration, active_cadence: Duration) -> Duration {
+    if activity_age < ACTIVE_WINDOW {
+        active_cadence
+    } else if activity_age < DORMANT_WINDOW {
+        IDLE_CADENCE.max(active_cadence)
+    } else {
+        DORMANT_CADENCE.max(active_cadence)
+    }
+}
+
+/// Whether a player is due for a poll: enough time has passed since their last
+/// poll to satisfy the cadence their activity age puts them in.
+fn poll_due(since_last_poll: Duration, activity_age: Duration, active_cadence: Duration) -> bool {
+    since_last_poll >= cadence_for(activity_age, active_cadence)
+}
+
+/// In-memory record of when each tracked player was last polled, so checks can be
+/// spaced by activity tier. Ephemeral by design: after a restart it starts empty,
+/// so every player is polled once on the first cycle (a deliberate full re-sync)
+/// and then settles back into their cadence.
+#[derive(Default)]
+struct PollSchedule {
+    last_polled: HashMap<i64, Instant>,
+}
+
+impl PollSchedule {
+    /// Is `player_id` due at `now`? A player never polled this session always is.
+    fn is_due(
+        &self,
+        player_id: i64,
+        activity_age: Duration,
+        active_cadence: Duration,
+        now: Instant,
+    ) -> bool {
+        match self.last_polled.get(&player_id) {
+            Some(&last) => poll_due(
+                now.saturating_duration_since(last),
+                activity_age,
+                active_cadence,
+            ),
+            None => true,
+        }
+    }
+
+    fn mark_polled(&mut self, player_id: i64, now: Instant) {
+        self.last_polled.insert(player_id, now);
+    }
+
+    /// Forget players no longer tracked, so the map can't grow unbounded as
+    /// players are added and removed over the process's lifetime.
+    fn retain_tracked(&mut self, tracked: &HashSet<i64>) {
+        self.last_polled.retain(|id, _| tracked.contains(id));
+    }
+}
+
+/// Current wall-clock time in unix seconds, matching how `match_results` and
+/// `players` persist `created_at` (SQLite `unixepoch()`).
+fn unix_now_secs() -> i64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0)
+}
 
 #[derive(Debug, thiserror::Error)]
 enum PollerError {
@@ -28,53 +121,102 @@ pub async fn start_polling(
     image_gen: Arc<ImageGenerator>,
     interval_secs: u64,
 ) {
-    let mut interval = interval(Duration::from_secs(interval_secs));
+    let mut ticker = interval(Duration::from_secs(interval_secs));
     // If a cycle overruns the interval, space the next tick out instead of
     // firing a burst of catch-up ticks back-to-back (the default Burst).
-    interval.set_missed_tick_behavior(MissedTickBehavior::Delay);
+    ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
+
+    // The tick doubles as the active-tier (fastest) cadence: an active player is
+    // due every cycle, so a just-finished game is still announced within one
+    // interval, exactly as before adaptive polling.
+    let active_cadence = Duration::from_secs(interval_secs);
+    let mut schedule = PollSchedule::default();
 
     info!(interval_secs, "🔄 Match poller started");
 
     loop {
-        interval.tick().await;
+        ticker.tick().await;
 
-        if let Err(e) = poll_players(&db, &riot, &http, &image_gen).await {
+        if let Err(e) =
+            poll_players(&db, &riot, &http, &image_gen, active_cadence, &mut schedule).await
+        {
             error!(error = ?e, "🔄 ❌ Polling cycle failed");
         }
     }
 }
 
-#[instrument(skip_all, fields(player_count))]
+#[instrument(skip_all, fields(due, tracked))]
 async fn poll_players(
     db: &Repository,
     riot: &RiotClient,
     http: &Http,
     image_gen: &ImageGenerator,
+    active_cadence: Duration,
+    schedule: &mut PollSchedule,
 ) -> Result<(), PollerError> {
-    let players = db.get_all_tracked_players().await?;
+    let players: Vec<TrackedPlayer> = db.get_tracked_players_with_activity().await?;
+
+    // Prune schedule entries for players no longer tracked (also covers the
+    // empty-roster case, clearing everything).
+    let tracked_ids: HashSet<i64> = players.iter().map(|tp| tp.player.id).collect();
+    schedule.retain_tracked(&tracked_ids);
+    let tracked = tracked_ids.len();
 
     if players.is_empty() {
         debug!("🔄 No players tracked, skipping poll cycle");
         return Ok(());
     }
 
-    Span::current().record("player_count", players.len());
+    let now = Instant::now();
+    let now_unix = unix_now_secs();
+
+    // Keep only the players whose activity-derived cadence says they're due now.
+    let due: Vec<Player> = players
+        .into_iter()
+        .filter(|tp| {
+            let activity_age =
+                Duration::from_secs((now_unix - tp.last_activity_secs).max(0) as u64);
+            schedule.is_due(tp.player.id, activity_age, active_cadence, now)
+        })
+        .map(|tp| tp.player)
+        .collect();
+
+    let due_count = due.len();
+    Span::current().record("tracked", tracked);
+    Span::current().record("due", due_count);
+
+    if due.is_empty() {
+        debug!(tracked, "🔄 No players due this cycle");
+        return Ok(());
+    }
+
     info!(
-        count = players.len(),
-        "🔄 Polling {} player(s)",
-        players.len()
+        due = due_count,
+        tracked, "🔄 Polling {due_count} of {tracked} tracked player(s)"
     );
 
-    for player in players {
-        if let Err(e) = check_player_match(db, riot, http, image_gen, &player).await {
-            warn!(
-                error = ?e,
-                player_id = player.id,
-                riot_id = %player.riot_id(),
-                "🔄 ⚠️ Failed to check player match"
-            );
-        }
+    // Record the poll before the network work, so a cycle that overruns the tick
+    // doesn't re-select the same players next time round.
+    for player in &due {
+        schedule.mark_polled(player.id, now);
     }
+
+    // Poll due players concurrently. The rate limiter bounds the real request
+    // rate; concurrency just overlaps network latency. Per-player failures are
+    // contained here (logged, never propagated) so one bad player can't abort the
+    // whole cycle.
+    stream::iter(due)
+        .for_each_concurrent(POLL_CONCURRENCY, |player| async move {
+            if let Err(e) = check_player_match(db, riot, http, image_gen, &player).await {
+                warn!(
+                    error = ?e,
+                    player_id = player.id,
+                    riot_id = %player.riot_id(),
+                    "🔄 ⚠️ Failed to check player match"
+                );
+            }
+        })
+        .await;
 
     Ok(())
 }
@@ -294,8 +436,10 @@ async fn process_match(
             let channel = ChannelId::new(channel_id as u64);
             let message = match (&image_data, &fallback_embed) {
                 (Some(bytes), _) => {
-                    let attachment =
-                        CreateAttachment::bytes(bytes.as_ref(), ImageGenerator::ATTACHMENT_FILENAME);
+                    let attachment = CreateAttachment::bytes(
+                        bytes.as_ref(),
+                        ImageGenerator::ATTACHMENT_FILENAME,
+                    );
                     CreateMessage::new().add_file(attachment)
                 }
                 (None, Some(embed)) => CreateMessage::new().embed(embed.clone()),
@@ -433,7 +577,75 @@ async fn fetch_rank_info(
 
 #[cfg(test)]
 mod tests {
-    use super::matches_to_process;
+    use std::collections::HashSet;
+    use std::time::{Duration, Instant};
+
+    use super::{
+        DORMANT_CADENCE, IDLE_CADENCE, PollSchedule, cadence_for, matches_to_process, poll_due,
+    };
+
+    const HOUR: Duration = Duration::from_secs(60 * 60);
+    const DAY: Duration = Duration::from_secs(24 * 60 * 60);
+
+    #[test]
+    fn cadence_tiers_follow_activity_age() {
+        let active = Duration::from_secs(60);
+        // A recent game keeps the player on the fast (tick) cadence.
+        assert_eq!(cadence_for(Duration::ZERO, active), active);
+        assert_eq!(cadence_for(HOUR, active), active);
+        // Past 2h → idle; past a week → dormant.
+        assert_eq!(cadence_for(3 * HOUR, active), IDLE_CADENCE);
+        assert_eq!(cadence_for(8 * DAY, active), DORMANT_CADENCE);
+    }
+
+    #[test]
+    fn active_cadence_is_a_floor_for_slower_tiers() {
+        // A base tick coarser than the idle/dormant constants must win: we can't
+        // poll more often than the loop wakes.
+        let active = Duration::from_secs(20 * 60);
+        assert_eq!(cadence_for(3 * HOUR, active), active);
+        assert_eq!(cadence_for(8 * DAY, active), active);
+    }
+
+    #[test]
+    fn poll_due_respects_the_tier_cadence() {
+        let active = Duration::from_secs(60);
+        // Active player: due after one interval, not before.
+        assert!(!poll_due(Duration::from_secs(30), Duration::ZERO, active));
+        assert!(poll_due(active, Duration::ZERO, active));
+        // Idle player (3h since last game): due only after the 5-minute cadence.
+        assert!(!poll_due(Duration::from_secs(4 * 60), 3 * HOUR, active));
+        assert!(poll_due(IDLE_CADENCE, 3 * HOUR, active));
+    }
+
+    #[test]
+    fn schedule_polls_unseen_players_then_spaces_them() {
+        let mut sched = PollSchedule::default();
+        let active = Duration::from_secs(60);
+        let now = Instant::now();
+
+        // Never polled this session → always due.
+        assert!(sched.is_due(1, Duration::ZERO, active, now));
+        sched.mark_polled(1, now);
+        // Just polled → not due within the interval.
+        assert!(!sched.is_due(1, Duration::ZERO, active, now));
+        // A full interval later → due again.
+        assert!(sched.is_due(1, Duration::ZERO, active, now + active));
+    }
+
+    #[test]
+    fn schedule_forgets_untracked_players() {
+        let mut sched = PollSchedule::default();
+        let now = Instant::now();
+        sched.mark_polled(1, now);
+        sched.mark_polled(2, now);
+
+        let tracked: HashSet<i64> = [2].into_iter().collect();
+        sched.retain_tracked(&tracked);
+
+        assert!(!sched.last_polled.contains_key(&1));
+        assert!(sched.last_polled.contains_key(&2));
+    }
 
     fn ids(v: &[&str]) -> Vec<String> {
         v.iter().map(|s| s.to_string()).collect()

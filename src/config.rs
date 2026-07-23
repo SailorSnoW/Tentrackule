@@ -14,6 +14,9 @@ pub struct Config {
     pub database_url: String,
     pub polling_interval_secs: u64,
     pub riot_rate_limit_per_second: NonZeroU32,
+    /// Second Riot rate-limit window. Personal keys allow 20 req/s *and* 100
+    /// req/2 min; the per-second quota alone doesn't cover the slower window.
+    pub riot_rate_limit_per_two_min: NonZeroU32,
     pub ddragon_version: String,
     /// Base URL of the Browserless HTML→PNG renderer, e.g.
     /// `http://tentrackule-renderer.internal:3000`. When unset, the bot falls
@@ -29,6 +32,7 @@ impl Config {
 
         const DEFAULT_POLLING_INTERVAL_SECS: u64 = 60;
         const DEFAULT_RIOT_RATE_LIMIT_PER_SECOND: u32 = 20;
+        const DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN: u32 = 100;
         const DEFAULT_DDRAGON_VERSION: &str = "16.1.1";
 
         let discord_token = env::var("DISCORD_TOKEN")
@@ -45,13 +49,15 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(DEFAULT_POLLING_INTERVAL_SECS);
 
-        let riot_rate_limit_per_second = env::var("RIOT_RATE_LIMIT_PER_SECOND")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .and_then(NonZeroU32::new)
-            .unwrap_or_else(|| {
-                NonZeroU32::new(DEFAULT_RIOT_RATE_LIMIT_PER_SECOND).unwrap_or(NonZeroU32::MIN)
-            });
+        let riot_rate_limit_per_second = non_zero_u32_env(
+            "RIOT_RATE_LIMIT_PER_SECOND",
+            DEFAULT_RIOT_RATE_LIMIT_PER_SECOND,
+        );
+
+        let riot_rate_limit_per_two_min = non_zero_u32_env(
+            "RIOT_RATE_LIMIT_PER_TWO_MIN",
+            DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN,
+        );
 
         let ddragon_version =
             env::var("DDRAGON_VERSION").unwrap_or_else(|_| DEFAULT_DDRAGON_VERSION.into());
@@ -67,6 +73,7 @@ impl Config {
             database_url,
             polling_interval_secs,
             riot_rate_limit_per_second,
+            riot_rate_limit_per_two_min,
             ddragon_version,
             renderer_url,
             renderer_token,
@@ -77,4 +84,14 @@ impl Config {
 /// Read an env var, mapping both "unset" and "" to `None`.
 fn non_empty_env(key: &str) -> Option<String> {
     env::var(key).ok().filter(|v| !v.trim().is_empty())
+}
+
+/// Parse a positive integer env var, falling back to `default` when unset,
+/// unparseable, or zero. `default` is assumed non-zero (it comes from a literal).
+fn non_zero_u32_env(key: &str, default: u32) -> NonZeroU32 {
+    env::var(key)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .and_then(NonZeroU32::new)
+        .unwrap_or_else(|| NonZeroU32::new(default).unwrap_or(NonZeroU32::MIN))
 }

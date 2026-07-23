@@ -75,6 +75,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let riot_client = RiotClient::new(
         config.riot_api_key.clone(),
         config.riot_rate_limit_per_second,
+        config.riot_rate_limit_per_two_min,
     )?;
     tracing::info!("🔷 Riot API client initialized");
 

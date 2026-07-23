@@ -84,3 +84,15 @@ pub struct Guild {
     pub id: i64,
     pub alert_channel_id: Option<i64>,
 }
+
+/// A tracked player paired with the wall-clock time (unix seconds) of their most
+/// recent known activity: the newest `match_results.created_at`, or — for a
+/// player with no recorded games yet — their own `players.created_at`. Never
+/// null, so the poller always has an age to derive an adaptive cadence from,
+/// with no extra Riot call.
+#[derive(Debug, Clone, FromRow)]
+pub struct TrackedPlayer {
+    #[sqlx(flatten)]
+    pub player: Player,
+    pub last_activity_secs: i64,
+}
