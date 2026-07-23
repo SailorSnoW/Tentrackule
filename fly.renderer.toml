@@ -1,0 +1,47 @@
+# Renderer app — headless-Chromium HTML→PNG service (Browserless).
+# Deployed separately from the bot so the bot VM stays lean at 256 MB.
+# Full walkthrough: docs/renderer-deploy.md
+#
+#   fly apps create tentrackule-renderer
+#   fly secrets set -a tentrackule-renderer TOKEN=<random-token>
+#   fly deploy -c fly.renderer.toml --flycast
+#
+# Reached privately at http://tentrackule-renderer.flycast:3000. We go through
+# the Fly proxy (`.flycast`) on purpose: it is what autostarts the scaled-to-zero
+# machine on the first request. A plain `.internal` address connects directly to
+# the instance, bypasses the proxy, and would never wake a stopped machine.
+
+app = 'tentrackule-renderer'
+primary_region = 'cdg'
+
+[build]
+  image = 'ghcr.io/browserless/chromium:latest'
+
+[env]
+  # Max concurrent Chromium sessions — keep low on a 1 GB VM to avoid OOM.
+  CONCURRENT = '2'
+  # Per-session hard cap (ms) so a stuck render can't pin the machine awake.
+  TIMEOUT = '60000'
+  # TOKEN is provided as a secret (`fly secrets set TOKEN=…`), never in this file.
+
+[[services]]
+  internal_port = 3000
+  protocol = 'tcp'
+  # Scale-to-zero: suspend (fast resume) when idle, start again on request.
+  auto_stop_machines = 'suspend'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    port = 3000
+    handlers = ['http']
+
+  [services.concurrency]
+    type = 'requests'
+    soft_limit = 2
+    hard_limit = 4
+
+[[vm]]
+  memory = '1024mb'
+  cpu_kind = 'shared'
+  cpus = 1

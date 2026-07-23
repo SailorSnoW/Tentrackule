@@ -110,6 +110,16 @@ async fn handle_error(error: poise::FrameworkError<'_, Data, AppError>) {
                     .await;
             }
         }
+        poise::FrameworkError::NotAnOwner { ctx, .. } => {
+            warn!(
+                user_id = %ctx.author().id,
+                command = ctx.command().name.as_str(),
+                "🎮 ⚠️ Owner-only command refused"
+            );
+            let _ = ctx
+                .say("This command is restricted to the bot owner.")
+                .await;
+        }
         other => {
             error!(error = ?other, "🎮 ❌ Unhandled framework error");
         }

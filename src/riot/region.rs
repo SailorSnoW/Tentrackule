@@ -159,9 +159,3 @@ impl Region {
         }
     }
 }
-
-impl fmt::Display for Region {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.as_str())
-    }
-}

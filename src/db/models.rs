@@ -7,7 +7,6 @@ pub struct Player {
     pub game_name: String,
     pub tag_line: String,
     pub region: String,
-    pub profile_icon_id: Option<i32>,
     pub last_match_id: Option<String>,
     pub last_rank_solo_tier: Option<String>,
     pub last_rank_solo_rank: Option<String>,
@@ -32,6 +31,7 @@ impl Player {
                 tier: tier.clone(),
                 rank: rank.clone(),
                 lp,
+                ..Default::default()
             }),
             _ => None,
         }
@@ -47,17 +47,36 @@ impl Player {
                 tier: tier.clone(),
                 rank: rank.clone(),
                 lp,
+                ..Default::default()
             }),
             _ => None,
         }
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct RankInfo {
     pub tier: String,
     pub rank: String,
     pub lp: i32,
+    /// Ranked wins for the queue. `None` when reconstructed from the DB (which
+    /// only persists tier/rank/lp); populated on the freshly-fetched rank.
+    pub wins: Option<i32>,
+    pub losses: Option<i32>,
+}
+
+impl RankInfo {
+    /// `EMERALD` + `IV` → `Emerald IV`. Shared by the card view-model and the
+    /// poller's text-embed fallback.
+    pub fn display_tier(&self) -> String {
+        let lower = self.tier.to_lowercase();
+        let mut chars = lower.chars();
+        let tier = match chars.next() {
+            None => String::new(),
+            Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
+        };
+        format!("{tier} {}", self.rank)
+    }
 }
 
 #[derive(Debug, Clone, FromRow)]

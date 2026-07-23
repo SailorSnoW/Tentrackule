@@ -44,7 +44,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             .init();
     }
 
-    tracing::info!("🦑 Starting Tentrackule 2.0");
+    tracing::info!(
+        version = env!("CARGO_PKG_VERSION"),
+        "🦑 Starting Tentrackule"
+    );
 
     // Load configuration
     let config = Config::from_env()?;
@@ -71,8 +74,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("🔷 Riot API client initialized");
 
     // Initialize image generator
-    let image_gen = Arc::new(ImageGenerator::new(config.ddragon_version.clone()).await?);
-    tracing::info!(version = %config.ddragon_version, "🖼️ Image generator initialized");
+    let image_gen = Arc::new(
+        ImageGenerator::new(
+            config.ddragon_version.clone(),
+            config.renderer_url.clone(),
+            config.renderer_token.clone(),
+        )
+        .await?,
+    );
+    tracing::info!(
+        version = %config.ddragon_version,
+        renderer = config.renderer_url.is_some(),
+        "🖼️ Image generator initialized"
+    );
 
     // Create shared data for Discord bot
     let data = Data {

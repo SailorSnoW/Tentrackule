@@ -1,6 +1,6 @@
 [package]
 name = "tentrackule"
-version = "2.0.2"
+version = "2.5.0"
 authors = ["Loïs Lag <lois@snowcorp.fr>"]
 edition = "2024"
 readme = "README.md"
@@ -47,8 +47,5 @@ dotenvy = "0.15"
 # Utilities
 urlencoding = "2"
 
-# Image generation
-resvg = "0.44"
-usvg = "0.44"
-tiny-skia = "0.11"
+# Image generation: data-URI inlining of card assets (rendering is remote)
 base64 = "0.22"

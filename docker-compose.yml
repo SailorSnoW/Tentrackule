@@ -1,22 +1,49 @@
 services:
+  # Headless-Chromium HTML->PNG renderer (same image as the Fly renderer app,
+  # fly.renderer.toml). In prod this is a separate scale-to-zero Fly app; locally
+  # it's just a sibling container the bot reaches over the compose network.
+  renderer:
+    image: ghcr.io/browserless/chromium:latest
+    container_name: tentrackule-renderer
+    restart: unless-stopped
+    environment:
+      # Must match the bot's RENDERER_TOKEN below.
+      - TOKEN=${RENDERER_TOKEN:-local-dev-token}
+      - CONCURRENT=2
+      - TIMEOUT=60000
+    # Chromium needs far more headroom than the bot.
+    mem_limit: 1g
+    # Uncomment to hit the renderer directly from the host (debugging):
+    #   curl "http://localhost:3000/docs"
+    # ports:
+    #   - "3000:3000"
+
   tentrackule:
     build: .
     container_name: tentrackule
     restart: unless-stopped
+    # Start order only (no readiness wait): if the first render races Chromium's
+    # boot it falls back to a text embed and the next poll succeeds.
+    depends_on:
+      - renderer
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - RIOT_API_KEY=${RIOT_API_KEY}
-      - DATABASE_URL=sqlite:/app/data/tentrackule.db
-      - DDRAGON_VERSION=${DDRAGON_VERSION:-14.24.1}
+      - DATABASE_URL=sqlite:/data/tentrackule.db
+      - DDRAGON_VERSION=${DDRAGON_VERSION:-16.1.1}
       - POLLING_INTERVAL_SECS=${POLLING_INTERVAL_SECS:-60}
       - RUST_LOG=${RUST_LOG:-info,tentrackule=debug}
       - LOG_FORMAT=${LOG_FORMAT:-json}
+      # Point the bot at the renderer container (same token as above). Comment out
+      # these two lines to exercise the text-embed fallback instead.
+      - RENDERER_URL=http://renderer:3000
+      - RENDERER_TOKEN=${RENDERER_TOKEN:-local-dev-token}
     volumes:
-      - tentrackule-data:/app/data
-      - tentrackule-cache:/app/.cache
+      # Single volume at /data holds the SQLite DB and the DDragon asset cache
+      # (.cache/images), mirroring the Fly bot's mount + the Dockerfile WORKDIR.
+      - tentrackule-data:/data
     mem_limit: 256m
     cpus: 0.5
 
 volumes:
   tentrackule-data:
-  tentrackule-cache:

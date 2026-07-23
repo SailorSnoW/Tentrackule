@@ -3,13 +3,12 @@ use sqlx::SqlitePool;
 use super::models::{Guild, Player, RankInfo};
 use crate::error::AppError;
 
-const PLAYER_COLUMN_NAMES: [&str; 13] = [
+const PLAYER_COLUMN_NAMES: [&str; 12] = [
     "id",
     "puuid",
     "game_name",
     "tag_line",
     "region",
-    "profile_icon_id",
     "last_match_id",
     "last_rank_solo_tier",
     "last_rank_solo_rank",
@@ -18,6 +17,10 @@ const PLAYER_COLUMN_NAMES: [&str; 13] = [
     "last_rank_flex_rank",
     "last_rank_flex_lp",
 ];
+
+/// Rows kept per `(player, queue)` in `match_results`. The card only reads the
+/// last 5; the margin keeps the table bounded without touching recent history.
+const MATCH_HISTORY_KEEP: u32 = 20;
 
 fn player_columns(alias: Option<&str>) -> String {
     let prefix = alias.map(|a| format!("{a}.")).unwrap_or_default();
@@ -115,19 +118,6 @@ impl Repository {
         Ok(())
     }
 
-    pub async fn update_player_profile_icon(
-        &self,
-        player_id: i64,
-        profile_icon_id: i32,
-    ) -> Result<(), AppError> {
-        sqlx::query("UPDATE players SET profile_icon_id = ? WHERE id = ?")
-            .bind(profile_icon_id)
-            .bind(player_id)
-            .execute(&self.pool)
-            .await?;
-        Ok(())
-    }
-
     pub async fn update_player_rank(
         &self,
         player_id: i64,
@@ -158,32 +148,86 @@ impl Repository {
         Ok(())
     }
 
-    // === Guild operations ===
+    // === Match-result history (streak) ===
 
-    pub async fn get_or_create_guild(&self, guild_id: u64) -> Result<Guild, AppError> {
-        let id = guild_id as i64;
+    /// Record one processed match's outcome. Idempotent on `(player_id,
+    /// match_id)` so a re-poll of the same match never double-counts. Callers
+    /// skip remakes (they are not a real win/loss). The history is pruned to
+    /// the newest [`MATCH_HISTORY_KEEP`] rows per player+queue.
+    pub async fn record_match_result(
+        &self,
+        player_id: i64,
+        match_id: &str,
+        won: bool,
+        queue_id: i32,
+    ) -> Result<(), AppError> {
+        sqlx::query(
+            "INSERT OR IGNORE INTO match_results (player_id, match_id, won, queue_id) VALUES (?, ?, ?, ?)",
+        )
+        .bind(player_id)
+        .bind(match_id)
+        .bind(won as i32)
+        .bind(queue_id)
+        .execute(&self.pool)
+        .await?;
 
-        if let Some(guild) = self.get_guild(guild_id).await? {
-            return Ok(guild);
-        }
-
-        sqlx::query("INSERT INTO guilds (id) VALUES (?)")
-            .bind(id)
-            .execute(&self.pool)
-            .await?;
-
-        self.get_guild(guild_id)
-            .await?
-            .ok_or_else(|| AppError::Database(sqlx::Error::RowNotFound))
+        // Keep the history bounded: only the newest rows feed the streak bar.
+        sqlx::query(
+            r#"
+            DELETE FROM match_results
+            WHERE player_id = ? AND queue_id = ? AND rowid NOT IN (
+                SELECT rowid FROM match_results
+                WHERE player_id = ? AND queue_id = ?
+                ORDER BY created_at DESC, rowid DESC
+                LIMIT ?
+            )
+            "#,
+        )
+        .bind(player_id)
+        .bind(queue_id)
+        .bind(player_id)
+        .bind(queue_id)
+        .bind(MATCH_HISTORY_KEEP as i64)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
     }
 
-    pub async fn get_guild(&self, guild_id: u64) -> Result<Option<Guild>, AppError> {
-        let guild =
-            sqlx::query_as::<_, Guild>("SELECT id, alert_channel_id FROM guilds WHERE id = ?")
-                .bind(guild_id as i64)
-                .fetch_optional(&self.pool)
-                .await?;
-        Ok(guild)
+    /// The most recent `limit` outcomes for a player in one queue, ordered
+    /// oldest→newest (so the last element is the latest game) for the streak bar.
+    pub async fn get_recent_results(
+        &self,
+        player_id: i64,
+        queue_id: i32,
+        limit: u32,
+    ) -> Result<Vec<bool>, AppError> {
+        // `rowid` breaks ties within the same `created_at` second (insertion order).
+        let rows = sqlx::query_scalar::<_, i64>(
+            r#"
+            SELECT won FROM match_results
+            WHERE player_id = ? AND queue_id = ?
+            ORDER BY created_at DESC, rowid DESC
+            LIMIT ?
+            "#,
+        )
+        .bind(player_id)
+        .bind(queue_id)
+        .bind(limit as i64)
+        .fetch_all(&self.pool)
+        .await?;
+        // Query yields newest→oldest; reverse so the bar reads old→new (L→R).
+        Ok(rows.into_iter().rev().map(|w| w != 0).collect())
+    }
+
+    // === Guild operations ===
+
+    /// Make sure the guild row exists (no-op when it already does).
+    async fn ensure_guild(&self, guild_id: u64) -> Result<(), AppError> {
+        sqlx::query("INSERT OR IGNORE INTO guilds (id) VALUES (?)")
+            .bind(guild_id as i64)
+            .execute(&self.pool)
+            .await?;
+        Ok(())
     }
 
     pub async fn set_guild_alert_channel(
@@ -191,7 +235,7 @@ impl Repository {
         guild_id: u64,
         channel_id: u64,
     ) -> Result<(), AppError> {
-        self.get_or_create_guild(guild_id).await?;
+        self.ensure_guild(guild_id).await?;
 
         sqlx::query("UPDATE guilds SET alert_channel_id = ? WHERE id = ?")
             .bind(channel_id as i64)
@@ -209,7 +253,7 @@ impl Repository {
         player_id: i64,
         added_by: u64,
     ) -> Result<(), AppError> {
-        self.get_or_create_guild(guild_id).await?;
+        self.ensure_guild(guild_id).await?;
 
         sqlx::query(
             "INSERT OR IGNORE INTO guild_players (guild_id, player_id, added_by) VALUES (?, ?, ?)",

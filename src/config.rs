@@ -3,6 +3,10 @@ use std::num::NonZeroU32;
 
 use crate::error::AppError;
 
+/// User agent sent on all outbound HTTP (Riot API, DDragon, renderer), derived
+/// from the crate version so it can never drift from `Cargo.toml`.
+pub const USER_AGENT: &str = concat!("Tentrackule/", env!("CARGO_PKG_VERSION"));
+
 #[derive(Debug, Clone)]
 pub struct Config {
     pub discord_token: String,
@@ -11,6 +15,12 @@ pub struct Config {
     pub polling_interval_secs: u64,
     pub riot_rate_limit_per_second: NonZeroU32,
     pub ddragon_version: String,
+    /// Base URL of the Browserless HTML→PNG renderer, e.g.
+    /// `http://tentrackule-renderer.internal:3000`. When unset, the bot falls
+    /// back to a text embed instead of a rendered card (see `image_gen`).
+    pub renderer_url: Option<String>,
+    /// Auth token for the renderer (`?token=…`). Paired with `renderer_url`.
+    pub renderer_token: Option<String>,
 }
 
 impl Config {
@@ -40,12 +50,16 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .and_then(NonZeroU32::new)
             .unwrap_or_else(|| {
-                NonZeroU32::new(DEFAULT_RIOT_RATE_LIMIT_PER_SECOND)
-                    .unwrap_or(NonZeroU32::MIN)
+                NonZeroU32::new(DEFAULT_RIOT_RATE_LIMIT_PER_SECOND).unwrap_or(NonZeroU32::MIN)
             });
 
         let ddragon_version =
             env::var("DDRAGON_VERSION").unwrap_or_else(|_| DEFAULT_DDRAGON_VERSION.into());
+
+        // Optional: only set in prod. Empty strings are treated as unset so a
+        // blank `fly.toml` entry doesn't produce a broken URL.
+        let renderer_url = non_empty_env("RENDERER_URL");
+        let renderer_token = non_empty_env("RENDERER_TOKEN");
 
         Ok(Self {
             discord_token,
@@ -54,6 +68,13 @@ impl Config {
             polling_interval_secs,
             riot_rate_limit_per_second,
             ddragon_version,
+            renderer_url,
+            renderer_token,
         })
     }
+}
+
+/// Read an env var, mapping both "unset" and "" to `None`.
+fn non_empty_env(key: &str) -> Option<String> {
+    env::var(key).ok().filter(|v| !v.trim().is_empty())
 }

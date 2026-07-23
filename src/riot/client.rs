@@ -8,6 +8,7 @@ use reqwest::Client;
 use serde::de::DeserializeOwned;
 use tracing::{debug, error, trace, warn};
 
+use crate::config::USER_AGENT;
 use crate::error::AppError;
 
 type GovernorRateLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
@@ -24,9 +25,7 @@ impl RiotClient {
         let quota = Quota::per_second(rate_limit_per_second);
         let rate_limiter = Arc::new(RateLimiter::direct(quota));
 
-        let http = Client::builder()
-            .user_agent("Tentrackule/2.0")
-            .build()?;
+        let http = Client::builder().user_agent(USER_AGENT).build()?;
 
         Ok(Self {
             http,

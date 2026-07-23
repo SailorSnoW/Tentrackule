@@ -10,7 +10,6 @@ CREATE TABLE IF NOT EXISTS players (
     game_name TEXT NOT NULL,
     tag_line TEXT NOT NULL,
     region TEXT NOT NULL,
-    profile_icon_id INTEGER,
     last_match_id TEXT,
     last_rank_solo_tier TEXT,
     last_rank_solo_rank TEXT,
@@ -37,8 +36,25 @@ CREATE TABLE IF NOT EXISTS guild_players (
     FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_players_puuid ON players(puuid);
+-- Per-match outcome history, one row per processed decisive game (remakes are
+-- skipped). Feeds the ranked "streak" bar (Phase 4) with the last few results;
+-- no extra Riot call, the poller already has the result in hand.
+CREATE TABLE IF NOT EXISTS match_results (
+    player_id INTEGER NOT NULL,
+    match_id TEXT NOT NULL,
+    won INTEGER NOT NULL,
+    queue_id INTEGER NOT NULL,
+    created_at INTEGER NOT NULL DEFAULT (unixepoch()),
+    PRIMARY KEY (player_id, match_id),
+    FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
+);
+
+-- `puuid` is UNIQUE, which already carries its own automatic index; drop the
+-- redundant explicit one that older schemas created.
+DROP INDEX IF EXISTS idx_players_puuid;
+
 CREATE INDEX IF NOT EXISTS idx_guild_players_guild ON guild_players(guild_id);
+CREATE INDEX IF NOT EXISTS idx_match_results_player ON match_results(player_id, queue_id, created_at);
 "#;
 
 pub async fn run_migrations(pool: &SqlitePool) -> Result<(), AppError> {

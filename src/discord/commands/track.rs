@@ -46,13 +46,6 @@ pub async fn track(
     let actual_game_name = account.game_name.as_deref().unwrap_or(&game_name);
     let actual_tag_line = account.tag_line.as_deref().unwrap_or(&tag_line);
 
-    // Get summoner info for profile icon
-    let summoner = ctx
-        .data()
-        .riot
-        .get_summoner_by_puuid(platform, puuid)
-        .await?;
-
     // Save to database
     let player = ctx
         .data()
@@ -60,21 +53,9 @@ pub async fn track(
         .get_or_create_player(puuid, actual_game_name, actual_tag_line, platform.as_str())
         .await?;
 
-    // Update profile icon
-    ctx.data()
-        .db
-        .update_player_profile_icon(player.id, summoner.profile_icon_id)
-        .await?;
-
     // If player has no last_match_id, fetch and store it to avoid alerting on old games
     if player.last_match_id.is_none() {
-        let riot_region = platform.to_region();
-        match ctx
-            .data()
-            .riot
-            .get_match_ids(riot_region, puuid, 1)
-            .await
-        {
+        match ctx.data().riot.get_match_ids(riot_region, puuid, 1).await {
             Ok(match_ids) => {
                 if let Some(last_match_id) = match_ids.first() {
                     ctx.data()

@@ -23,7 +23,6 @@ RUN cargo build --release && rm -rf src target/release/deps/tentrackule*
 
 # Copy actual source code
 COPY src ./src
-COPY assets ./assets
 
 # Build the actual binary
 RUN cargo build --release --locked
@@ -35,12 +34,11 @@ FROM debian:bookworm-slim AS runtime
 
 WORKDIR /app
 
-# Install runtime dependencies
+# Install runtime dependencies. No fonts: the card is rasterised by the remote
+# renderer, so the bot ships neither an SVG engine nor a font stack.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl3 \
-    fonts-dejavu-core \
-    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/* \
     && useradd -r -s /bin/false appuser
 

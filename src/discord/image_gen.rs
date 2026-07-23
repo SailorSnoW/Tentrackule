@@ -1,3 +1,11 @@
+//! Match-card image generation.
+//!
+//! `generate_match_image` builds the card HTML ([`ScorecardVm`]), inlines the
+//! Data Dragon assets it references as data URIs through the [`ImageCache`], then
+//! renders that HTML to a PNG via the remote Browserless service
+//! ([`ImageGenerator::render_html_to_png`]). All rasterisation happens in the
+//! renderer, so the bot itself ships no font stack or SVG engine.
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -5,18 +13,21 @@ use std::time::{Duration, SystemTime};
 
 use base64::Engine;
 use reqwest::Client;
-use tiny_skia::Pixmap;
+use serde::Serialize;
 use tokio::fs;
 use tokio::sync::RwLock;
 use tracing::{debug, info, trace, warn};
-use usvg::fontdb::Database;
-use usvg::{Options, Tree};
 
+use super::ddragon::DdragonData;
+use super::scorecard::{CARD_WIDTH_PX, ScorecardVm};
+use crate::config::USER_AGENT;
 use crate::db::{Player, RankInfo};
 use crate::error::AppError;
 use crate::riot::{InfoDto, ParticipantDto};
 
-const SVG_TEMPLATE: &str = include_str!("../../assets/match_template.svg");
+/// Timeout for one render round-trip. Generous enough to absorb the renderer's
+/// scale-to-zero cold start (~1–3 s) plus font/asset fetches inside Chromium.
+const RENDER_TIMEOUT: Duration = Duration::from_secs(30);
 
 // Cache configuration
 const CACHE_TTL_HOURS: u64 = 24 * 7; // 7 days
@@ -91,8 +102,7 @@ impl ImageCache {
 
                 // Load into memory
                 if let Ok(bytes) = fs::read(&path).await {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    let data_uri = format!("data:image/png;base64,{}", b64);
+                    let data_uri = to_data_uri(&bytes);
 
                     let Some(key) = path.file_stem().and_then(|s| s.to_str()) else {
                         continue;
@@ -155,7 +165,7 @@ impl ImageCache {
             .iter()
             .map(|(key, entry)| (key.clone(), entry.created_at))
             .collect();
-        entries.sort_by(|a, b| a.1.cmp(&b.1));
+        entries.sort_by_key(|e| e.1);
 
         let mut freed: u64 = 0;
         let target_free = current_size - (self.max_size_bytes * 80 / 100); // Free to 80% capacity
@@ -210,8 +220,7 @@ impl ImageCache {
             if modified.elapsed().unwrap_or(Duration::MAX) <= self.ttl {
                 // Valid disk cache
                 if let Ok(bytes) = fs::read(&cache_path).await {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                    let data_uri = format!("data:image/png;base64,{}", b64);
+                    let data_uri = to_data_uri(&bytes);
 
                     // Store in memory
                     let entry = CacheEntry {
@@ -238,8 +247,7 @@ impl ImageCache {
             Ok(response) if response.status().is_success() => {
                 match response.bytes().await {
                     Ok(bytes) => {
-                        let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
-                        let data_uri = format!("data:image/png;base64,{}", b64);
+                        let data_uri = to_data_uri(&bytes);
 
                         // Save to disk
                         if let Err(e) = fs::write(&cache_path, &bytes).await {
@@ -286,351 +294,264 @@ impl ImageCache {
     }
 }
 
+/// Champion mastery for the played champion, threaded into the card for the
+/// non-ranked footer block (level + points; the API exposes no games count).
+#[derive(Debug, Clone, Copy)]
+pub struct MasteryInfo {
+    pub level: i32,
+    pub points: i32,
+}
+
 pub struct MatchImageContext<'a> {
     pub player: &'a Player,
     pub participant: &'a ParticipantDto,
     pub match_info: &'a InfoDto,
     pub old_rank: Option<&'a RankInfo>,
     pub new_rank: Option<&'a RankInfo>,
+    /// Recent results (last ~5) for the ranked streak bar, oldest→newest. Empty
+    /// hides the bar (Phase 4).
+    pub streak: Vec<bool>,
+    /// Champion mastery for the non-ranked footer block. `None` omits it.
+    pub mastery: Option<MasteryInfo>,
+}
+
+/// Location + credentials of the remote HTML→PNG renderer (Browserless).
+struct RendererConfig {
+    /// Base URL without a trailing slash, e.g.
+    /// `http://tentrackule-renderer.internal:3000`.
+    base_url: String,
+    token: String,
 }
 
 pub struct ImageGenerator {
     http: Client,
     cache: ImageCache,
-    ddragon_version: String,
-    fontdb: Database,
+    /// Boot-time DDragon lookup tables (spell/rune/champion icon resolution).
+    ddragon: DdragonData,
+    /// `None` when `RENDERER_URL`/`RENDERER_TOKEN` are unset — rendering then
+    /// errors and the poller degrades to a text embed.
+    renderer: Option<RendererConfig>,
 }
 
 impl ImageGenerator {
-    pub async fn new(ddragon_version: String) -> Result<Self, AppError> {
-        let http = Client::builder().user_agent("Tentrackule/2.0").build()?;
+    pub async fn new(
+        ddragon_version: String,
+        renderer_url: Option<String>,
+        renderer_token: Option<String>,
+    ) -> Result<Self, AppError> {
+        let http = Client::builder().user_agent(USER_AGENT).build()?;
 
-        // Load system fonts
-        let mut fontdb = Database::new();
-        fontdb.load_system_fonts();
-        let font_count = fontdb.len();
-        info!(font_count, "🖼️ Loaded system fonts");
+        // Fetch the DDragon spell/rune/champion lookup tables once (best-effort).
+        let ddragon = DdragonData::load(&http, &ddragon_version).await;
 
         // Initialize cache (loads from disk)
         let cache = ImageCache::new().await;
 
+        let renderer = match (renderer_url, renderer_token) {
+            (Some(base_url), Some(token)) => Some(RendererConfig {
+                base_url: base_url.trim_end_matches('/').to_string(),
+                token,
+            }),
+            _ => {
+                warn!(
+                    "🖼️ ⚠️ Renderer not configured (RENDERER_URL/RENDERER_TOKEN); \
+                     match cards will fall back to a text embed"
+                );
+                None
+            }
+        };
+
         Ok(Self {
             http,
             cache,
-            ddragon_version,
-            fontdb,
+            ddragon,
+            renderer,
         })
     }
 
+    /// Resolve a champion's numeric id (`Ahri` → `103`) from the boot-time
+    /// DDragon tables, for the poller's champion-mastery lookup. `None` when the
+    /// champion index failed to load or the name is unknown.
+    pub fn champion_id(&self, champion_name: &str) -> Option<i64> {
+        self.ddragon.champion_id(champion_name)
+    }
+
+    /// Build the scorecard HTML and render it to a PNG via the remote renderer.
     pub async fn generate_match_image(
         &self,
         ctx: &MatchImageContext<'_>,
     ) -> Result<Vec<u8>, AppError> {
-        let svg = self.build_svg(ctx).await;
-        self.render_svg_to_png(&svg)
+        let mut vm = ScorecardVm::from_context(ctx, &self.ddragon);
+        self.inline_assets(&mut vm).await;
+        let html = vm.build_html();
+        self.render_html_to_png(&html).await
     }
 
-    async fn build_svg(&self, ctx: &MatchImageContext<'_>) -> String {
-        let participant = ctx.participant;
-        let match_info = ctx.match_info;
-        let is_win = participant.win;
-        let is_remake = match_info.game_ended_in_early_surrender;
-
-        // Result styling based on outcome
-        let (banner_gradient, result_glow, result_text) = if is_remake {
-            ("url(#remakeGradient)", "", "REMAKE")
-        } else if is_win {
-            ("url(#victoryGradient)", "url(#victoryGlow)", "VICTORY")
-        } else {
-            ("url(#defeatGradient)", "url(#defeatGlow)", "DEFEAT")
-        };
-
-        // Fetch images in parallel
-        let champion_fut = self.fetch_champion_image(&participant.champion_name);
-        let profile_fut = async {
-            if let Some(icon_id) = ctx.player.profile_icon_id {
-                self.fetch_profile_icon(icon_id).await
-            } else {
-                None
+    /// Fetch every image the card references through the cache and inline it as a
+    /// data URI, so the render is deterministic and offline (no DDragon fetches
+    /// at capture time). Fetches that fail are simply left as their original URL,
+    /// which the renderer can still resolve directly.
+    async fn inline_assets(&self, vm: &mut ScorecardVm) {
+        let mut map: HashMap<String, String> = HashMap::new();
+        for url in vm.image_urls() {
+            if map.contains_key(&url) {
+                continue;
             }
-        };
-        let items = participant.items();
-        let fetch_item = |item_id| async move {
-            if item_id > 0 {
-                self.fetch_item_image(item_id).await
-            } else {
-                None
-            }
-        };
-        let (champion_image, profile_icon, item0, item1, item2, item3, item4, item5, item6) = tokio::join!(
-            champion_fut,
-            profile_fut,
-            fetch_item(items[0]),
-            fetch_item(items[1]),
-            fetch_item(items[2]),
-            fetch_item(items[3]),
-            fetch_item(items[4]),
-            fetch_item(items[5]),
-            fetch_item(items[6])
-        );
-        let item_images = [item0, item1, item2, item3, item4, item5, item6];
-        let champion_image = champion_image.unwrap_or_default();
-        let profile_icon = profile_icon.unwrap_or_default();
-
-        // Stats
-        let cs = participant.cs_total();
-        let cs_per_min = format!("{:.1}", participant.cs_per_minute(match_info.game_duration));
-        let damage = format_damage(participant.total_damage_dealt_to_champions);
-        let vision = participant.vision_score.to_string();
-        let role = participant.position_display();
-        let gold = participant.gold_formatted();
-
-        // Rank info
-        let (rank_display, lp_change, lp_color, lp_x) = Self::format_rank_info(ctx);
-
-        // Build SVG by replacing placeholders
-        let mut svg = SVG_TEMPLATE.to_string();
-
-        // Basic replacements
-        svg = svg.replace("{{banner_gradient}}", banner_gradient);
-        svg = svg.replace("{{result_glow}}", result_glow);
-        svg = svg.replace("{{result_text}}", result_text);
-        svg = svg.replace("{{champion_image}}", &champion_image);
-        svg = svg.replace("{{profile_icon}}", &profile_icon);
-        svg = svg.replace(
-            "{{player_name}}",
-            &format!("{}#{}", ctx.player.game_name, ctx.player.tag_line),
-        );
-        svg = svg.replace("{{queue_type}}", match_info.queue_name());
-        svg = svg.replace("{{duration}}", &match_info.duration_formatted());
-        svg = svg.replace("{{champion_name}}", &participant.champion_name);
-        svg = svg.replace("{{kills}}", &participant.kills.to_string());
-        svg = svg.replace("{{deaths}}", &participant.deaths.to_string());
-        svg = svg.replace("{{assists}}", &participant.assists.to_string());
-        svg = svg.replace("{{kda_ratio}}", &format!("{:.2}", participant.kda_ratio()));
-        svg = svg.replace("{{cs}}", &cs.to_string());
-        svg = svg.replace("{{cs_per_min}}", &cs_per_min);
-        svg = svg.replace("{{damage}}", &damage);
-        svg = svg.replace("{{vision}}", &vision);
-        svg = svg.replace("{{role}}", role);
-        svg = svg.replace("{{gold}}", &gold);
-        svg = svg.replace("{{rank_display}}", &rank_display);
-        svg = svg.replace("{{lp_change}}", &lp_change);
-        svg = svg.replace("{{lp_color}}", &lp_color);
-        svg = svg.replace("{{lp_x}}", &lp_x);
-        svg = svg.replace("{{patch}}", match_info.patch_version());
-
-        // Handle conditional item images with mustache-like syntax
-        for (i, item_opt) in item_images.iter().enumerate() {
-            let tag_open = format!("{{{{#item{}}}}}", i);
-            let tag_close = format!("{{{{/item{}}}}}", i);
-            let placeholder = format!("{{{{item{}}}}}", i);
-
-            if let Some(data_uri) = item_opt {
-                // Item exists - keep the element and replace placeholder
-                svg = svg.replace(&tag_open, "");
-                svg = svg.replace(&tag_close, "");
-                svg = svg.replace(&placeholder, data_uri);
-            } else {
-                // No item - remove entire conditional block
-                if let (Some(start), Some(end)) = (svg.find(&tag_open), svg.find(&tag_close)) {
-                    let end_with_tag = end + tag_close.len();
-                    svg.replace_range(start..end_with_tag, "");
-                }
+            if let Some(data_uri) = self.cache.get_or_fetch(&self.http, &url).await {
+                map.insert(url, data_uri);
             }
         }
-
-        // Handle ARAM-specific layout (2 stats) vs normal layout (4 stats)
-        let is_aram = match_info.queue_id == 450;
-        svg = Self::handle_conditional_block(&svg, "stats_normal", !is_aram);
-        svg = Self::handle_conditional_block(&svg, "stats_aram", is_aram);
-
-        svg
+        vm.apply_asset_map(&map);
     }
 
-    /// Handle mustache-like conditional blocks: {{#name}}content{{/name}}
-    fn handle_conditional_block(svg: &str, name: &str, show: bool) -> String {
-        let tag_open = format!("{{{{#{}}}}}", name);
-        let tag_close = format!("{{{{/{}}}}}", name);
-
-        if show {
-            // Keep content, remove tags
-            svg.replace(&tag_open, "").replace(&tag_close, "")
-        } else {
-            // Remove entire block
-            let mut result = svg.to_string();
-            if let (Some(start), Some(end)) = (result.find(&tag_open), result.find(&tag_close)) {
-                let end_with_tag = end + tag_close.len();
-                result.replace_range(start..end_with_tag, "");
-            }
-            result
-        }
-    }
-
-    fn format_rank_info(ctx: &MatchImageContext<'_>) -> (String, String, String, String) {
-        if !ctx.match_info.is_ranked() {
-            return (
-                String::new(),
-                String::new(),
-                "transparent".to_string(),
-                "0".to_string(),
-            );
-        }
-
-        let rank_display = ctx
-            .new_rank
-            .map(|r| format!("{} {} • {} LP", capitalize(&r.tier), r.rank, r.lp))
-            .unwrap_or_default();
-
-        let lp_diff = calculate_lp_diff(ctx.old_rank, ctx.new_rank);
-
-        // Calculate approximate x position for LP change based on rank_display length
-        let lp_x = 60 + (rank_display.len() as i32 * 9);
-
-        let (lp_change, lp_color) = match lp_diff {
-            Some(diff) if diff > 0 => (format!("(+{})", diff), "#4CAF50".to_string()),
-            Some(diff) if diff < 0 => (format!("({})", diff), "#E84057".to_string()),
-            _ => (String::new(), "transparent".to_string()),
-        };
-
-        (rank_display, lp_change, lp_color, lp_x.to_string())
-    }
-
-    async fn fetch_champion_image(&self, champion_name: &str) -> Option<String> {
-        let url = format!(
-            "https://ddragon.leagueoflegends.com/cdn/{}/img/champion/{}.png",
-            self.ddragon_version, champion_name
-        );
-        self.cache.get_or_fetch(&self.http, &url).await
-    }
-
-    async fn fetch_profile_icon(&self, icon_id: i32) -> Option<String> {
-        let url = format!(
-            "https://ddragon.leagueoflegends.com/cdn/{}/img/profileicon/{}.png",
-            self.ddragon_version, icon_id
-        );
-        self.cache.get_or_fetch(&self.http, &url).await
-    }
-
-    async fn fetch_item_image(&self, item_id: i32) -> Option<String> {
-        let url = format!(
-            "https://ddragon.leagueoflegends.com/cdn/{}/img/item/{}.png",
-            self.ddragon_version, item_id
-        );
-        self.cache.get_or_fetch(&self.http, &url).await
-    }
-
-    fn render_svg_to_png(&self, svg_content: &str) -> Result<Vec<u8>, AppError> {
-        let options = Options {
-            fontdb: Arc::new(self.fontdb.clone()),
-            ..Default::default()
-        };
-
-        let tree =
-            Tree::from_str(svg_content, &options).map_err(|e| AppError::ImageGeneration {
-                message: format!("Failed to parse SVG: {}", e),
+    /// POST the resolved HTML to Browserless and return the PNG bytes. Crops to
+    /// the `#card-root` element and waits for both network idle and web fonts
+    /// before capturing, so the card never renders in a fallback font.
+    async fn render_html_to_png(&self, html: &str) -> Result<Vec<u8>, AppError> {
+        let renderer = self
+            .renderer
+            .as_ref()
+            .ok_or_else(|| AppError::ImageGeneration {
+                message: "renderer not configured".to_string(),
             })?;
 
-        let size = tree.size();
-        let width = size.width() as u32;
-        let height = size.height() as u32;
+        let url = format!("{}/screenshot?token={}", renderer.base_url, renderer.token);
+        let payload = ScreenshotRequest {
+            html,
+            selector: "#card-root",
+            options: ScreenshotOptions { kind: "png" },
+            viewport: Viewport {
+                width: CARD_WIDTH_PX,
+                // Tall enough to lay the card out; the element crop trims the rest.
+                height: 1200,
+                device_scale_factor: 2,
+            },
+            goto_options: GotoOptions {
+                wait_until: "networkidle0",
+                timeout: 15_000,
+            },
+            wait_for_function: WaitForFunction {
+                func: "async () => { await document.fonts.ready; return true; }",
+                timeout: 5_000,
+            },
+        };
 
-        let mut pixmap = Pixmap::new(width, height).ok_or_else(|| AppError::ImageGeneration {
-            message: "Failed to create pixmap".to_string(),
-        })?;
+        let response = self
+            .http
+            .post(&url)
+            .header(reqwest::header::ACCEPT, "image/png")
+            .json(&payload)
+            .timeout(RENDER_TIMEOUT)
+            .send()
+            .await?;
 
-        resvg::render(&tree, tiny_skia::Transform::default(), &mut pixmap.as_mut());
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            let snippet: String = body.chars().take(200).collect();
+            return Err(AppError::ImageGeneration {
+                message: format!("renderer returned {status}: {snippet}"),
+            });
+        }
 
-        let png_data = pixmap.encode_png().map_err(|e| AppError::ImageGeneration {
-            message: format!("Failed to encode PNG: {}", e),
-        })?;
-
-        debug!(
-            width,
-            height,
-            size = png_data.len(),
-            "🖼️ ✅ Image generated"
-        );
-        Ok(png_data)
+        let bytes = response.bytes().await?;
+        debug!(size = bytes.len(), "🖼️ ✅ Card rendered via renderer");
+        Ok(bytes.to_vec())
     }
 }
 
-fn format_damage(damage: i64) -> String {
-    if damage >= 1_000_000 {
-        format!("{:.1}M", damage as f64 / 1_000_000.0)
-    } else if damage >= 1_000 {
-        format!("{:.1}k", damage as f64 / 1_000.0)
+// ============================================================================
+// Browserless `/screenshot` request payload
+// ============================================================================
+//
+// Hand-rolled `Serialize` structs (serialized via reqwest's `json` feature) so
+// we don't take a direct `serde_json` dependency. Field names/shape mirror the
+// Browserless v2 BodySchema (`html`, `selector`, `options`, `viewport`,
+// `gotoOptions`, `waitForFunction`).
+
+#[derive(Serialize)]
+struct ScreenshotRequest<'a> {
+    html: &'a str,
+    /// Screenshot only this element (tight crop, no page padding).
+    selector: &'a str,
+    options: ScreenshotOptions,
+    viewport: Viewport,
+    #[serde(rename = "gotoOptions")]
+    goto_options: GotoOptions,
+    #[serde(rename = "waitForFunction")]
+    wait_for_function: WaitForFunction,
+}
+
+#[derive(Serialize)]
+struct ScreenshotOptions {
+    #[serde(rename = "type")]
+    kind: &'static str,
+}
+
+#[derive(Serialize)]
+struct Viewport {
+    width: u32,
+    height: u32,
+    #[serde(rename = "deviceScaleFactor")]
+    device_scale_factor: u32,
+}
+
+#[derive(Serialize)]
+struct GotoOptions {
+    #[serde(rename = "waitUntil")]
+    wait_until: &'static str,
+    timeout: u32,
+}
+
+#[derive(Serialize)]
+struct WaitForFunction {
+    /// Arrow-function source evaluated in the page (Browserless `fn`).
+    #[serde(rename = "fn")]
+    func: &'static str,
+    timeout: u32,
+}
+
+/// Base64 `data:` URI for image bytes, with a MIME type sniffed from the magic
+/// bytes. DDragon serves PNG (items/spells/runes/icons) and JPEG (champion
+/// splash); CommunityDragon serves the role icons and rank crests as SVG. The
+/// right type matters — Chromium won't decode an SVG (or the JPEG splash)
+/// mislabelled as PNG.
+fn to_data_uri(bytes: &[u8]) -> String {
+    let mime = if bytes.starts_with(&[0xFF, 0xD8, 0xFF]) {
+        "image/jpeg"
+    } else if is_svg(bytes) {
+        "image/svg+xml"
     } else {
-        damage.to_string()
-    }
-}
-
-fn calculate_lp_diff(old_rank: Option<&RankInfo>, new_rank: Option<&RankInfo>) -> Option<i32> {
-    let old = old_rank?;
-    let new = new_rank?;
-    Some(rank_to_lp(new) - rank_to_lp(old))
-}
-
-fn rank_to_lp(rank: &RankInfo) -> i32 {
-    let tier_value = match rank.tier.to_uppercase().as_str() {
-        "IRON" => 0,
-        "BRONZE" => 400,
-        "SILVER" => 800,
-        "GOLD" => 1200,
-        "PLATINUM" => 1600,
-        "EMERALD" => 2000,
-        "DIAMOND" => 2400,
-        "MASTER" => 2800,
-        "GRANDMASTER" => 3200,
-        "CHALLENGER" => 3600,
-        _ => 0,
+        "image/png"
     };
-
-    let division_value = match rank.rank.as_str() {
-        "IV" => 0,
-        "III" => 100,
-        "II" => 200,
-        "I" => 300,
-        _ => 0,
-    };
-
-    tier_value + division_value + rank.lp
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    format!("data:{mime};base64,{b64}")
 }
 
-fn capitalize(s: &str) -> String {
-    let lower = s.to_lowercase();
-    let mut chars = lower.chars();
-    match chars.next() {
-        None => String::new(),
-        Some(c) => c.to_uppercase().collect::<String>() + chars.as_str(),
-    }
+/// Whether `bytes` looks like an SVG document — the first non-whitespace byte is
+/// `<` (a `<?xml …?>` prolog or a bare `<svg>`). Good enough given the only
+/// non-raster assets we inline are CommunityDragon SVGs.
+fn is_svg(bytes: &[u8]) -> bool {
+    matches!(
+        bytes.iter().copied().find(|b| !b.is_ascii_whitespace()),
+        Some(b'<')
+    )
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{RankInfo, calculate_lp_diff, format_damage, rank_to_lp};
+    use super::to_data_uri;
 
     #[test]
-    fn format_damage_suffixes() {
-        assert_eq!(format_damage(999), "999");
-        assert_eq!(format_damage(1_200), "1.2k");
-        assert_eq!(format_damage(1_000_000), "1.0M");
-    }
-
-    #[test]
-    fn rank_lp_math() {
-        let gold_ii = RankInfo {
-            tier: "GOLD".to_string(),
-            rank: "II".to_string(),
-            lp: 45,
-        };
-        let gold_i = RankInfo {
-            tier: "GOLD".to_string(),
-            rank: "I".to_string(),
-            lp: 10,
-        };
-        assert_eq!(rank_to_lp(&gold_ii), 1445);
-        assert_eq!(calculate_lp_diff(Some(&gold_ii), Some(&gold_i)), Some(65));
-        assert_eq!(calculate_lp_diff(None, Some(&gold_i)), None);
+    fn data_uri_sniffs_mime_from_magic_bytes() {
+        // JPEG magic (FF D8 FF) -> image/jpeg; PNG magic -> image/png.
+        assert!(to_data_uri(&[0xFF, 0xD8, 0xFF, 0x00]).starts_with("data:image/jpeg;base64,"));
+        assert!(to_data_uri(&[0x89, b'P', b'N', b'G']).starts_with("data:image/png;base64,"));
+        // SVG (leading `<svg`, or an `<?xml` prolog after whitespace) -> svg+xml.
+        assert!(to_data_uri(b"<svg xmlns=\"x\"></svg>").starts_with("data:image/svg+xml;base64,"));
+        assert!(
+            to_data_uri(b"\n  <?xml version=\"1.0\"?><svg/>")
+                .starts_with("data:image/svg+xml;base64,")
+        );
     }
 }

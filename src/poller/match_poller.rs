@@ -1,12 +1,12 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use poise::serenity_prelude::{ChannelId, CreateAttachment, CreateMessage, Http};
+use poise::serenity_prelude::{ChannelId, CreateAttachment, CreateEmbed, CreateMessage, Http};
 use tokio::time::interval;
 use tracing::{Span, debug, error, info, instrument, warn};
 
 use crate::db::{Player, RankInfo, Repository};
-use crate::discord::image_gen::{ImageGenerator, MatchImageContext};
+use crate::discord::image_gen::{ImageGenerator, MasteryInfo, MatchImageContext};
 use crate::error::AppError;
 use crate::riot::{Platform, RiotClient};
 
@@ -56,7 +56,11 @@ async fn poll_players(
     }
 
     Span::current().record("player_count", players.len());
-    info!(count = players.len(), "🔄 Polling {} player(s)", players.len());
+    info!(
+        count = players.len(),
+        "🔄 Polling {} player(s)",
+        players.len()
+    );
 
     for player in players {
         if let Err(e) = check_player_match(db, riot, http, image_gen, &player).await {
@@ -139,28 +143,55 @@ async fn check_player_match(
     // Get current rank if ranked game
     let old_rank = if match_data.info.is_solo_queue() {
         player.solo_rank_info()
-    } else if match_data.info.queue_id == 440 {
+    } else if match_data.info.is_flex_queue() {
         player.flex_rank_info()
     } else {
         None
     };
 
-    // Fetch new rank info and profile icon
+    // Fetch new rank info
     let (new_solo_rank, new_flex_rank) = fetch_rank_info(riot, platform, &player.puuid).await?;
-
-    // Update profile icon (may have changed)
-    if let Ok(summoner) = riot.get_summoner_by_puuid(platform, &player.puuid).await {
-        let _ = db
-            .update_player_profile_icon(player.id, summoner.profile_icon_id)
-            .await;
-    }
 
     let new_rank = if match_data.info.is_solo_queue() {
         new_solo_rank.as_ref()
-    } else if match_data.info.queue_id == 440 {
+    } else if match_data.info.is_flex_queue() {
         new_flex_rank.as_ref()
     } else {
         None
+    };
+
+    // Record this match's outcome for the streak history (Phase 4). Remakes
+    // aren't a real result, so they're skipped; the insert is idempotent, so a
+    // re-poll before `last_match_id` advances won't double-count.
+    let queue_id = match_data.info.queue_id;
+    if !match_data.info.game_ended_in_early_surrender
+        && let Err(e) = db
+            .record_match_result(player.id, latest_match_id, participant.win, queue_id)
+            .await
+    {
+        warn!(error = ?e, "🔄 ⚠️ Failed to record match result");
+    }
+
+    // Ranked cards show a recent-form bar (last 5 in this queue, including this
+    // game); non-ranked cards show champion mastery instead. Only compute the
+    // one the card will actually display, so a normal game doesn't hit the
+    // mastery endpoint needlessly.
+    let (streak, mastery) = if match_data.info.is_ranked() {
+        let streak = db
+            .get_recent_results(player.id, queue_id, 5)
+            .await
+            .unwrap_or_default();
+        (streak, None)
+    } else {
+        let mastery = fetch_mastery(
+            riot,
+            image_gen,
+            platform,
+            &player.puuid,
+            &participant.champion_name,
+        )
+        .await;
+        (Vec::new(), mastery)
     };
 
     // Build image
@@ -170,27 +201,43 @@ async fn check_player_match(
         match_info: &match_data.info,
         old_rank: old_rank.as_ref(),
         new_rank,
+        streak,
+        mastery,
     };
 
-    let image_data = match image_gen.generate_match_image(&ctx).await {
-        Ok(data) => data,
+    // Render the match card. A renderer outage must never block the
+    // announcement, so on failure we fall back to a text embed instead of
+    // bailing out (which would also stall `last_match_id` and retry forever).
+    let image_data: Option<Arc<[u8]>> = match image_gen.generate_match_image(&ctx).await {
+        Ok(data) => Some(data.into()),
         Err(e) => {
-            error!(error = ?e, "🖼️ ❌ Failed to generate match image");
-            return Err(e.into());
+            warn!(
+                error = ?e,
+                match_id = latest_match_id,
+                "🖼️ ⚠️ Card render failed; falling back to a text embed"
+            );
+            None
         }
     };
-
-    let image_data: Arc<[u8]> = image_data.into();
+    let fallback_embed = image_data.is_none().then(|| build_fallback_embed(&ctx));
 
     // Get all guilds tracking this player
     let guilds = db.get_guilds_tracking_player(player.id).await?;
 
-    // Send image to all guilds
+    // Send the card (or text fallback) to all guilds
     for guild in guilds {
         if let Some(channel_id) = guild.alert_channel_id {
             let channel = ChannelId::new(channel_id as u64);
-            let attachment = CreateAttachment::bytes(image_data.as_ref(), "match_result.png");
-            let message = CreateMessage::new().add_file(attachment);
+            let message = match (&image_data, &fallback_embed) {
+                (Some(bytes), _) => {
+                    let attachment = CreateAttachment::bytes(bytes.as_ref(), "match_result.png");
+                    CreateMessage::new().add_file(attachment)
+                }
+                (None, Some(embed)) => CreateMessage::new().embed(embed.clone()),
+                // Unreachable: `fallback_embed` is always built when there is no
+                // image, but skip defensively rather than send an empty message.
+                (None, None) => continue,
+            };
 
             if let Err(e) = channel.send_message(http, message).await {
                 error!(
@@ -214,6 +261,79 @@ async fn check_player_match(
     Ok(())
 }
 
+/// Best-effort champion-mastery lookup for the non-ranked footer block. Resolves
+/// the champion's numeric id from the DDragon tables, then queries mastery; any
+/// miss (unknown champion, 404 "never played", API error) simply omits the
+/// block rather than failing the card.
+async fn fetch_mastery(
+    riot: &RiotClient,
+    image_gen: &ImageGenerator,
+    platform: Platform,
+    puuid: &str,
+    champion_name: &str,
+) -> Option<MasteryInfo> {
+    let champion_id = image_gen.champion_id(champion_name)?;
+    match riot
+        .get_champion_mastery(platform, puuid, champion_id)
+        .await
+    {
+        Ok(m) => Some(MasteryInfo {
+            level: m.champion_level,
+            points: m.champion_points,
+        }),
+        Err(e) => {
+            debug!(error = ?e, champion = champion_name, "🔄 No champion mastery available");
+            None
+        }
+    }
+}
+
+/// A compact text embed used when card rendering is unavailable, so a tracked
+/// match is still announced instead of being silently dropped.
+fn build_fallback_embed(ctx: &MatchImageContext<'_>) -> CreateEmbed {
+    let p = ctx.participant;
+    let info = ctx.match_info;
+
+    let (icon, outcome, color) = if info.game_ended_in_early_surrender {
+        ("🔄", "Remake", 0x9AA2AD)
+    } else if p.win {
+        ("🏆", "Victory", 0x3BA55D)
+    } else {
+        ("💀", "Defeat", 0xE84057)
+    };
+
+    let mut embed = CreateEmbed::new()
+        .title(format!("{icon} {outcome} — {}", ctx.player.riot_id()))
+        .color(color)
+        .field("Champion", &p.champion_name, true)
+        .field(
+            "KDA",
+            format!(
+                "{}/{}/{} ({:.2})",
+                p.kills,
+                p.deaths,
+                p.assists,
+                p.kda_ratio()
+            ),
+            true,
+        )
+        .field(
+            "Queue",
+            format!("{} · {}", info.queue_name(), info.duration_formatted()),
+            true,
+        );
+
+    if let Some(rank) = ctx.new_rank {
+        embed = embed.field(
+            "Rank",
+            format!("{} · {} LP", rank.display_tier(), rank.lp),
+            true,
+        );
+    }
+
+    embed
+}
+
 async fn fetch_rank_info(
     riot: &RiotClient,
     platform: Platform,
@@ -229,6 +349,8 @@ async fn fetch_rank_info(
             tier: entry.tier.clone(),
             rank: entry.rank.clone(),
             lp: entry.league_points,
+            wins: Some(entry.wins),
+            losses: Some(entry.losses),
         };
 
         if entry.is_solo_queue() {

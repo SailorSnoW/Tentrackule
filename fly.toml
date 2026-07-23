@@ -14,6 +14,9 @@ primary_region = 'cdg'
   LOG_FORMAT = 'json'
   POLLING_INTERVAL_SECS = '60'
   RUST_LOG = 'info,tentrackule=debug'
+  # Private renderer app (Browserless). RENDERER_TOKEN is a secret:
+  #   fly secrets set RENDERER_TOKEN=<same token as the renderer's TOKEN>
+  RENDERER_URL = 'http://tentrackule-renderer.flycast:3000'
 
 [[mounts]]
   source = 'tentrackule_data'
