@@ -59,11 +59,19 @@ match announcements are never blocked by the renderer being down or absent.
 
 ## Notes
 
-- **Cost / cold start.** The machine suspends when idle (`auto_stop_machines =
-  'suspend'`, `min_machines_running = 0`), so it's effectively free at rest and
-  resumes in ~1–3 s on the next match — invisible for a background post. The
-  30 s client timeout in `render_html_to_png` absorbs the cold start.
-- **Memory.** `CONCURRENT = 2` on a 1 GB VM keeps Chromium well clear of OOM.
-  Raise it only alongside VM memory.
+- **Always-warm, not scale-to-zero.** `min_machines_running = 1` with a single
+  machine (`fly scale count 1`) keeps one Chromium host permanently warm. This is
+  deliberate: Chromium's first launch on a freshly-woken machine (cold boot *or*
+  resume from suspend) routinely overruns Browserless's fixed 30 s launch timeout
+  (WS endpoint never appears → render fails to a text embed). That launch timeout
+  is **not** configurable, and the OSS image has no pre-boot, so the only robust
+  fix is to never let the machine go cold — a warm machine launches Chrome in
+  1-6 s. Trade-off: you pay for one VM 24/7 instead of ~free at rest. (The first
+  render right after a deploy/restart is still cold; if it falls back once,
+  re-trigger.)
+- **VM sizing.** A **dedicated** CPU (`performance-1x`, 2 GB) is required: on a
+  shared vCPU, Chromium's cold launch overran the 30 s WS-endpoint timeout and
+  every render fell back to a text embed. `CONCURRENT = 2` stays well clear of
+  OOM at 2 GB; raise it only alongside VM memory.
 - **Fonts.** The renderer fetches Google Fonts at render time and the card waits
   on `document.fonts.ready` before capture, so text never falls back mid-shot.

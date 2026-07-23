@@ -18,7 +18,7 @@ primary_region = 'cdg'
   image = 'ghcr.io/browserless/chromium:latest'
 
 [env]
-  # Max concurrent Chromium sessions — keep low on a 1 GB VM to avoid OOM.
+  # Max concurrent Chromium sessions — keep low relative to VM memory to avoid OOM.
   CONCURRENT = '2'
   # Per-session hard cap (ms) so a stuck render can't pin the machine awake.
   TIMEOUT = '60000'
@@ -27,10 +27,17 @@ primary_region = 'cdg'
 [[services]]
   internal_port = 3000
   protocol = 'tcp'
-  # Scale-to-zero: suspend (fast resume) when idle, start again on request.
-  auto_stop_machines = 'suspend'
+  # Keep one machine ALWAYS warm (min_machines_running = 1) — do NOT scale to zero.
+  # Chromium's first launch on a freshly-woken machine (cold boot *or* resume from
+  # suspend) routinely overruns Browserless's fixed 30 s launch timeout: the WS
+  # endpoint never appears, the render fails and the bot falls back to a text embed.
+  # That launch timeout is not configurable and the OSS image has no PREBOOT_CHROME,
+  # so the only robust fix is to never let the machine go cold — a warm machine
+  # launches Chrome in 1-6 s. Paired with `fly scale count 1`: a single machine that
+  # never stops. (auto_stop 'stop' only bites any scaled-up extras, of which none.)
+  auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [[services.ports]]
     port = 3000
@@ -41,7 +48,11 @@ primary_region = 'cdg'
     soft_limit = 2
     hard_limit = 4
 
+# Dedicated CPU: Chromium's cold launch is CPU-bursty and timed out (>30 s to
+# print its WS endpoint) on a shared vCPU, so every render fell back to a text
+# embed. A performance core boots it in a few seconds; 2 GB leaves headroom for
+# the render + CONCURRENT=2. This VM stays always-on (see min_machines_running).
 [[vm]]
-  memory = '1024mb'
-  cpu_kind = 'shared'
+  memory = '2048mb'
+  cpu_kind = 'performance'
   cpus = 1
