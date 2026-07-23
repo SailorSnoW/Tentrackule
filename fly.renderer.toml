@@ -27,17 +27,19 @@ primary_region = 'cdg'
 [[services]]
   internal_port = 3000
   protocol = 'tcp'
-  # Keep one machine ALWAYS warm (min_machines_running = 1) — do NOT scale to zero.
-  # Chromium's first launch on a freshly-woken machine (cold boot *or* resume from
-  # suspend) routinely overruns Browserless's fixed 30 s launch timeout: the WS
-  # endpoint never appears, the render fails and the bot falls back to a text embed.
-  # That launch timeout is not configurable and the OSS image has no PREBOOT_CHROME,
-  # so the only robust fix is to never let the machine go cold — a warm machine
-  # launches Chrome in 1-6 s. Paired with `fly scale count 1`: a single machine that
-  # never stops. (auto_stop 'stop' only bites any scaled-up extras, of which none.)
+  # Scale to zero when idle (min_machines_running = 0): the renderer does only a
+  # few cards a day, so an always-warm machine is ~90% of the infra bill for
+  # almost no work. The Fly proxy (.flycast) autostarts the stopped machine on the
+  # first request. That first request MAY fail — Chromium's cold launch can overrun
+  # Browserless's fixed 30 s launch timeout (not configurable; the OSS image has no
+  # PREBOOT_CHROME) — so the bot's render path retries once ~25 s later, by which
+  # point Chrome is warm (1-6 s). See `render_with_retry` (Phase 3.A); a render that
+  # still fails degrades to a text embed. If cold starts prove too flaky, revert to
+  # `min_machines_running = 1` + `fly scale count 1`, or move to Fly Machines API
+  # orchestration (Phase 3.B fallback).
   auto_stop_machines = 'stop'
   auto_start_machines = true
-  min_machines_running = 1
+  min_machines_running = 0
 
   [[services.ports]]
     port = 3000
@@ -51,7 +53,9 @@ primary_region = 'cdg'
 # Dedicated CPU: Chromium's cold launch is CPU-bursty and timed out (>30 s to
 # print its WS endpoint) on a shared vCPU, so every render fell back to a text
 # embed. A performance core boots it in a few seconds; 2 GB leaves headroom for
-# the render + CONCURRENT=2. This VM stays always-on (see min_machines_running).
+# the render + CONCURRENT=2. Kept even under scale-to-zero: we now pay for it only
+# the few minutes a day the machine is awake, and a fast cold launch is exactly
+# what keeps the render retry (Phase 3.A) landing inside its budget.
 [[vm]]
   memory = '2048mb'
   cpu_kind = 'performance'

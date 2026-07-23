@@ -23,6 +23,9 @@ serenity = { version = "0.12", default-features = false, features = [
 reqwest = { version = "0.12", default-features = false, features = [
     "json",
     "rustls-tls",
+    # match-v5 payloads (~100–300 KB of JSON) are served compressed; auto-decode
+    # them to cut per-match bandwidth by ~80–90%.
+    "gzip",
 ] }
 
 # Serialization
@@ -47,5 +50,10 @@ dotenvy = "0.15"
 # Utilities
 urlencoding = "2"
 
+# Bounded-concurrency asset fetches (Stream::buffer_unordered)
+futures = "0.3"
+
 # Image generation: data-URI inlining of card assets (rendering is remote)
 base64 = "0.22"
+# Collision-safe 128-bit cache keys for inlined assets
+sha2 = "0.10"

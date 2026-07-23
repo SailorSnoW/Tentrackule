@@ -21,6 +21,7 @@
 //! the card are inlined as data URIs separately, by the generator (`image_gen`).
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use super::ddragon::DdragonData;
 use super::grade;
@@ -216,9 +217,33 @@ pub struct ScorecardVm {
     pub loadout: Loadout,
     pub matchup: Option<MatchupView>,
     pub team: Option<TeamView>,
+
+    /// When set, the card's web fonts are inlined into a single `<style>` block
+    /// (Latin faces as data URIs) instead of the Google Fonts `<link>`, so the
+    /// render needs no network at capture time. Populated by the generator only
+    /// for pure-Latin names; CJK names keep the `<link>` path. See
+    /// [`Self::needs_cjk_fonts`] and [`Self::set_inlined_font_css`].
+    inlined_font_css: Option<Arc<str>>,
 }
 
 impl ScorecardVm {
+    /// Attach the pre-built inlined-font `<style>` payload, switching
+    /// [`build_html`](Self::build_html) from the Google Fonts `<link>` to a
+    /// self-contained `<style>`.
+    pub fn set_inlined_font_css(&mut self, css: Arc<str>) {
+        self.inlined_font_css = Some(css);
+    }
+
+    /// Whether the card needs the CJK web fonts (Noto Sans JP/KR/SC), which only
+    /// the Google Fonts `<link>` path loads. Pure-Latin names take the faster
+    /// inlined-font path instead. Only the player name carries arbitrary script;
+    /// every other card field is a Latin DDragon key or an English label.
+    pub fn needs_cjk_fonts(&self) -> bool {
+        contains_hangul(&self.player_name)
+            || contains_han(&self.player_name)
+            || contains_kana(&self.player_name)
+    }
+
     /// Whether the KDA multi-kill chip should show (port of `showMultiChip`).
     fn show_multi_chip(&self) -> bool {
         self.multi.is_some() && self.result != MatchResult::Remake
@@ -468,6 +493,7 @@ impl ScorecardVm {
                 opp_kills: t.opp_kills,
                 objectives: t.objectives,
             }),
+            inlined_font_css: None,
         }
     }
 }
@@ -602,16 +628,10 @@ impl ScorecardVm {
     /// the `#card-root` element for a tight crop.
     pub fn build_html(&self) -> String {
         let mut s = String::with_capacity(8 * 1024);
+        s.push_str("<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n");
+        self.push_font_head(&mut s);
         s.push_str(
-            "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n\
-<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n\
-<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n\
-<link href=\"",
-        );
-        s.push_str(&self.font_css_url());
-        s.push_str(
-            "\" rel=\"stylesheet\">\n\
-<style>body{margin:0;padding:40px;background:#101216;font-family:'Barlow Semi Condensed',system-ui,sans-serif}</style>\n\
+            "<style>body{margin:0;padding:40px;background:#101216;font-family:'Barlow Semi Condensed',system-ui,sans-serif}</style>\n\
 <script>addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='IMG'){t.style.visibility='hidden';}},true);</script>\n\
 </head>\n<body>\n",
         );
@@ -629,6 +649,26 @@ impl ScorecardVm {
         s.push_str("  </div>\n");
         s.push_str("</div>\n</body>\n</html>\n");
         s
+    }
+
+    /// Emit the font `<head>` fragment. With [`inlined_font_css`](Self) set, the
+    /// faces are inlined as a single self-contained `<style>` (no network at
+    /// capture time → the renderer can wait on `load` instead of `networkidle0`);
+    /// otherwise fall back to the Google Fonts `<link>`, fetched by Chromium.
+    fn push_font_head(&self, s: &mut String) {
+        if let Some(css) = &self.inlined_font_css {
+            s.push_str("<style>");
+            s.push_str(css);
+            s.push_str("</style>\n");
+        } else {
+            s.push_str(
+                "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n\
+<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n\
+<link href=\"",
+            );
+            s.push_str(&self.font_css_url());
+            s.push_str("\" rel=\"stylesheet\">\n");
+        }
     }
 
     /// Google Fonts stylesheet URL for the card. Cinzel + Barlow + Noto Sans JP
@@ -1121,6 +1161,19 @@ fn contains_han(s: &str) -> bool {
         .any(|c| matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}'))
 }
 
+/// Whether `s` contains Japanese kana (hiragana / katakana). Served by Noto Sans
+/// JP, which only the Google Fonts `<link>` path loads — so a kana name must not
+/// take the Latin-only inlined-font path. See [`ScorecardVm::needs_cjk_fonts`].
+fn contains_kana(s: &str) -> bool {
+    s.chars().any(|c| {
+        matches!(c,
+            '\u{3040}'..='\u{309F}'   // Hiragana
+            | '\u{30A0}'..='\u{30FF}' // Katakana
+            | '\u{FF66}'..='\u{FF9D}' // Half-width Katakana
+        )
+    })
+}
+
 fn item_src(version: &str, id: i32) -> String {
     format!("{DDRAGON}/{version}/img/item/{id}.png")
 }
@@ -1394,6 +1447,7 @@ mod tests {
                     },
                 ],
             }),
+            inlined_font_css: None,
         }
     }
 
@@ -1523,6 +1577,7 @@ mod tests {
             },
             matchup: None,
             team: None,
+            inlined_font_css: None,
         };
         let html = vm.build_html();
 
@@ -1912,6 +1967,49 @@ mod tests {
 
         assert!(contains_hangul("한글") && !contains_hangul("kana かな"));
         assert!(contains_han("漢字") && !contains_han("plain"));
+    }
+
+    /// A pure-Latin name takes the inlined-font path; any CJK script keeps the
+    /// Google Fonts `<link>` (Noto JP/KR/SC live only on that path).
+    #[test]
+    fn needs_cjk_fonts_gates_the_inlined_path() {
+        let mut vm = sample(MatchResult::Victory);
+
+        vm.player_name = "Faker".into();
+        assert!(!vm.needs_cjk_fonts(), "Latin name should inline fonts");
+
+        vm.player_name = "れいん".into(); // Hiragana
+        assert!(vm.needs_cjk_fonts(), "kana must keep the <link> path");
+
+        vm.player_name = "페이커".into(); // Hangul
+        assert!(vm.needs_cjk_fonts());
+
+        vm.player_name = "李相赫".into(); // Han
+        assert!(vm.needs_cjk_fonts());
+    }
+
+    /// With inlined font CSS attached, `build_html` emits a self-contained
+    /// `<style>` and drops the Google Fonts `<link>` (so the render needs no
+    /// network); without it, the `<link>` remains.
+    #[test]
+    fn build_html_inlines_fonts_when_set() {
+        let mut vm = sample(MatchResult::Victory);
+
+        // Default: linked fonts.
+        let linked = vm.build_html();
+        assert!(linked.contains("fonts.googleapis.com"));
+        assert!(!linked.contains("data:font/woff2"));
+
+        // Attached inlined CSS: no <link>, the faces are inlined instead.
+        vm.set_inlined_font_css(std::sync::Arc::from(
+            "@font-face{font-family:'Cinzel';src:url(data:font/woff2;base64,AAAA) format('woff2')}",
+        ));
+        let inlined = vm.build_html();
+        assert!(
+            !inlined.contains("fonts.googleapis.com"),
+            "Google Fonts <link> must be gone once fonts are inlined"
+        );
+        assert!(inlined.contains("data:font/woff2"));
     }
 
     /// Golden-file snapshot of the full rendered HTML for each theme. Regenerate

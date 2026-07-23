@@ -101,3 +101,5 @@ Two Fly.io apps:
 - [`docs/html-scorecard-roadmap.md`](docs/html-scorecard-roadmap.md) — design &
   implementation roadmap for the HTML match card.
 - [`docs/renderer-deploy.md`](docs/renderer-deploy.md) — renderer deployment guide.
+- [`docs/optimization-roadmap.md`](docs/optimization-roadmap.md) — resource, API
+  and infra-cost optimization roadmap.

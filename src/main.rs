@@ -8,7 +8,7 @@ mod riot;
 use std::sync::Arc;
 
 use poise::serenity_prelude as serenity;
-use sqlx::sqlite::{SqliteConnectOptions, SqlitePoolOptions};
+use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::Config;
@@ -54,8 +54,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing::info!("⚙️ Configuration loaded");
 
     // Initialize database
+    // WAL lets the poller's writes and the slash commands' reads proceed
+    // concurrently; sqlx doesn't set a journal mode by default, so the fallback
+    // rollback journal would briefly block readers on every write.
     let db_options: SqliteConnectOptions = config.database_url.parse()?;
-    let db_options = db_options.create_if_missing(true);
+    let db_options = db_options
+        .create_if_missing(true)
+        .journal_mode(SqliteJournalMode::Wal);
 
     let pool = SqlitePoolOptions::new()
         .max_connections(5)

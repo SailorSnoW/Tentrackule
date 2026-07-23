@@ -54,6 +54,9 @@ CREATE TABLE IF NOT EXISTS match_results (
 DROP INDEX IF EXISTS idx_players_puuid;
 
 CREATE INDEX IF NOT EXISTS idx_guild_players_guild ON guild_players(guild_id);
+-- `get_guilds_tracking_player` filters by `player_id` alone, which the
+-- `(guild_id, player_id)` PK can't serve (wrong leading column).
+CREATE INDEX IF NOT EXISTS idx_guild_players_player ON guild_players(player_id);
 CREATE INDEX IF NOT EXISTS idx_match_results_player ON match_results(player_id, queue_id, created_at);
 "#;
 

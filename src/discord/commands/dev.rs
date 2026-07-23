@@ -3,7 +3,7 @@ use poise::serenity_prelude::CreateAttachment;
 
 use crate::db::{Player, RankInfo};
 use crate::discord::bot::Context;
-use crate::discord::image_gen::{MasteryInfo, MatchImageContext};
+use crate::discord::image_gen::{ImageGenerator, MasteryInfo, MatchImageContext};
 use crate::error::AppError;
 use crate::riot::{
     InfoDto, ObjectiveCountDto, ObjectivesDto, ParticipantDto, PerkSelectionDto, PerkStyleDto,
@@ -336,7 +336,7 @@ pub async fn dev_test_alert(
         .image_gen
         .generate_match_image(&image_ctx)
         .await?;
-    let attachment = CreateAttachment::bytes(image_data, "match_result.png");
+    let attachment = CreateAttachment::bytes(image_data, ImageGenerator::ATTACHMENT_FILENAME);
 
     ctx.send(poise::CreateReply::default().attachment(attachment))
         .await?;
