@@ -1,6 +1,6 @@
 # Roadmap — Optimisation globale (mémoire, API Riot, cache, infra)
 
-> Statut : **en cours** (Phases 1–2 + 3.A/3.B/3.C + **4** + **5** implémentées — clippy/tests verts ; JPEG à valider visuellement via `/dev_test_alert`, cold starts scale-to-zero à observer après `fly deploy -c fly.renderer.toml`, cadence adaptative + baisse de volume à confirmer en prod via les logs ; auto-résolution DDragon + refresh 24 h à observer sur un vrai changement de patch) · issu de l'audit d'architecture du 2026-07-23.
+> Statut : **en cours** (Phases 1–2 + 3.A/3.B/3.C + **4** + **5** + **6** implémentées — clippy/tests verts ; JPEG à valider visuellement via `/dev_test_alert`, cold starts scale-to-zero à observer après `fly deploy -c fly.renderer.toml`, cadence adaptative + baisse de volume à confirmer en prod via la ligne de stats horaire de la Phase 6 ; auto-résolution DDragon + refresh 24 h à observer sur un vrai changement de patch) · issu de l'audit d'architecture du 2026-07-23.
 > Périmètre : consommation de ressources, volume d'appels API, stratégie de cache, coût infra. Aucun changement fonctionnel visible côté Discord (hors amélioration de justesse en Phase 1 et latence de détection accrue pour les joueurs inactifs en Phase 4, voulue).
 > Dernière mise à jour : 2026-07-24.
 
@@ -81,7 +81,7 @@ Objectif : décorréler le volume d'appels du nombre de joueurs suivis, et rendr
 - [x] 🟡 **Deuxième fenêtre de rate limit (100 req / 2 min)** — le governor n'applique que 20/s alors que les clés personnelles ont aussi une fenêtre 2 min. Second `Quota` combiné (ou, plus ambitieux, pilotage par les headers `X-App-Rate-Limit-Count`). *→ `limiter_per_window` = `Quota::with_period(120 s / N).allow_burst(N)` (N = `RIOT_RATE_LIMIT_PER_TWO_MIN`, défaut 100) en plus de `limiter_per_second`. `get` franchit les deux (fenêtre lente d'abord). Config `riot_rate_limit_per_two_min` + `.env.example`/README.*
 - [x] 🟡 **Boucle joueurs concurrente** — `poll_players` est séquentiel ; `buffer_unordered(3–5)` raccourcit les cycles quand N grandit. Le governor borne déjà le débit sortant, la concurrence ne fait que masquer la latence réseau. *→ `for_each_concurrent(POLL_CONCURRENCY = 5)` sur les joueurs dus (`futures::stream`). Erreurs par joueur contenues (loggées, jamais propagées) ; le rate limiter borne le débit réel.*
 
-**Critère de sortie :** volume d'appels/jour publié dans les logs (cf. Phase 6) en baisse nette à joueurs constants ; zéro erreur 429 non gérée sur un mois. *(Mesure fine en attente de la ligne de stats Phase 6 ; le retry 429 borné couvre déjà le second critère.)*
+**Critère de sortie :** volume d'appels/jour publié dans les logs (cf. Phase 6) en baisse nette à joueurs constants ; zéro erreur 429 non gérée sur un mois. *(La ligne de stats Phase 6 publie désormais `api_calls`/`calls_per_cycle` par heure — à lire en prod pour confirmer la baisse ; le retry 429 borné couvre déjà le second critère.)*
 
 ---
 
@@ -99,10 +99,10 @@ Objectif : supprimer le redeploy manuel à chaque patch LoL et les 404 en cours 
 
 ## 6. Phase 6 — Polish (opportuniste, au fil de l'eau)
 
-- [ ] 🟢 **Ligne de stats périodique** (1×/h dans les logs : appels API par cycle, hit-rate cache, latence rendu p50/p95, RSS). *À faire idéalement avant les Phases 3.B et 4 pour mesurer leurs gains.*
-- [ ] 🟡 **Réutilisation de l'attachment multi-guilde** — le même PNG est ré-uploadé pour chaque guilde qui suit le joueur : poster une fois, puis référencer l'URL CDN du premier message dans les suivants.
-- [ ] 🟢 **Arrêt gracieux** — SIGTERM (deploy Fly) : finir le check joueur en cours, fermer la pool proprement.
-- [ ] 🟢 **Config stricte** — les valeurs d'env invalides retombent silencieusement sur les défauts (`parse().ok()`) : logger un warning explicite.
+- [x] 🟢 **Ligne de stats périodique** (1×/h dans les logs : appels API par cycle, hit-rate cache, latence rendu p50/p95, RSS). *À faire idéalement avant les Phases 3.B et 4 pour mesurer leurs gains.* *→ `Metrics` (`src/metrics.rs`) : compteurs atomiques partagés — appels Riot (`RiotClient::get`, chaque tentative), cycles de poll (poller), hits/misses cache (`ImageCache::get_or_fetch`), latence de rendu (`render_html_to_png`, round-trip réussi) — plus RSS lu depuis `/proc/self/statm` (0 hors Linux). `run_reporter` (tick 1 h, `Delay`, 1ᵉʳ tick immédiat consommé) émet une ligne `📊 hourly stats` puis remet la fenêtre à zéro (`swap`). p50/p95 en nearest-rank sur les échantillons de la fenêtre (bornés à 4096). Spawné dans `main.rs`.*
+- [x] 🟡 **Réutilisation de l'attachment multi-guilde** — le même PNG est ré-uploadé pour chaque guilde qui suit le joueur : poster une fois, puis référencer l'URL CDN du premier message dans les suivants. *→ `process_match` : la carte est uploadée en **pièce jointe native** à la 1ʳᵉ guilde ; l'URL CDN renvoyée (`sent.attachments[0].url`) est réutilisée en `embed.image` pour les guildes suivantes (zéro ré-upload). Cas mono-guilde (le plus courant) **inchangé, octet pour octet**. Repli sûr : URL non capturée (envoi échoué / pas de pièce jointe) → la guilde suivante ré-uploade. Nuance assumée : les guildes 2+ voient un embed (au lieu de l'image nue) et dépendent de la persistance de l'URL CDN signée Discord.*
+- [x] 🟢 **Arrêt gracieux** — SIGTERM (deploy Fly) : finir le check joueur en cours, fermer la pool proprement. *→ `wait_for_shutdown_signal` (SIGTERM/SIGINT, feature `tokio` `signal`) → `watch` channel : le poller quitte sa boucle `select!` **entre** deux cycles (un cycle déjà commencé va au bout — la branche `select!` n'est pas annulée en plein vol), puis `shard_manager.shutdown_all()` fait retourner `client.start()`. `main` draine le poller (borné à `SHUTDOWN_DRAIN = 4 s`, dans la fenêtre `kill_timeout` Fly par défaut de 5 s) puis `pool.close()` (checkpoint WAL propre plutôt qu'une reprise après kill).*
+- [x] 🟢 **Config stricte** — les valeurs d'env invalides retombent silencieusement sur les défauts (`parse().ok()`) : logger un warning explicite. *→ `parse_env` (`config.rs`) remplace `non_zero_u32_env` + le `parse().ok()` inline : une valeur **présente mais invalide** (illisible ; pour `NonZeroU32`, `0`/négatif compris) logge `⚙️ ⚠️ Invalid env value` (var, valeur, défaut) et garde le défaut ; unset ou blanc reste silencieux (« non configuré »). Tests unitaires sur les quatre cas.*
 
 ---
 

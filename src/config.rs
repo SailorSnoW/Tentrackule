@@ -1,5 +1,9 @@
 use std::env;
+use std::fmt::Display;
 use std::num::NonZeroU32;
+use std::str::FromStr;
+
+use tracing::warn;
 
 use crate::error::AppError;
 
@@ -47,19 +51,18 @@ impl Config {
         let database_url =
             env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite:tentrackule.db".into());
 
-        let polling_interval_secs = env::var("POLLING_INTERVAL_SECS")
-            .ok()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(DEFAULT_POLLING_INTERVAL_SECS);
+        let polling_interval_secs =
+            parse_env("POLLING_INTERVAL_SECS", DEFAULT_POLLING_INTERVAL_SECS);
 
-        let riot_rate_limit_per_second = non_zero_u32_env(
+        let nonzero = |n: u32| NonZeroU32::new(n).unwrap_or(NonZeroU32::MIN);
+        let riot_rate_limit_per_second = parse_env(
             "RIOT_RATE_LIMIT_PER_SECOND",
-            DEFAULT_RIOT_RATE_LIMIT_PER_SECOND,
+            nonzero(DEFAULT_RIOT_RATE_LIMIT_PER_SECOND),
         );
 
-        let riot_rate_limit_per_two_min = non_zero_u32_env(
+        let riot_rate_limit_per_two_min = parse_env(
             "RIOT_RATE_LIMIT_PER_TWO_MIN",
-            DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN,
+            nonzero(DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN),
         );
 
         // Unset by default → the patch is auto-resolved from DDragon at boot.
@@ -91,12 +94,68 @@ fn non_empty_env(key: &str) -> Option<String> {
     env::var(key).ok().filter(|v| !v.trim().is_empty())
 }
 
-/// Parse a positive integer env var, falling back to `default` when unset,
-/// unparseable, or zero. `default` is assumed non-zero (it comes from a literal).
-fn non_zero_u32_env(key: &str, default: u32) -> NonZeroU32 {
-    env::var(key)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .and_then(NonZeroU32::new)
-        .unwrap_or_else(|| NonZeroU32::new(default).unwrap_or(NonZeroU32::MIN))
+/// Parse a scalar env var, falling back to `default`. Unset or blank is a normal
+/// "not configured" and stays silent; a value that is *present but invalid*
+/// (unparseable — for [`NonZeroU32`] this includes `0` and negatives) logs a
+/// warning naming the var, the bad value, and the default, instead of the old
+/// silent `parse().ok()` swallow (Phase 6, config stricte).
+fn parse_env<T: FromStr + Display + Copy>(key: &str, default: T) -> T {
+    match env::var(key) {
+        Ok(raw) if !raw.trim().is_empty() => raw.trim().parse::<T>().unwrap_or_else(|_| {
+            warn!(
+                env = key,
+                value = %raw,
+                default = %default,
+                "⚙️ ⚠️ Invalid env value; falling back to default"
+            );
+            default
+        }),
+        _ => default,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_env;
+    use std::num::NonZeroU32;
+
+    // Each test uses a distinct key so the shared process environment can't race
+    // between parallel tests. `set_var`/`remove_var` are `unsafe` in edition 2024.
+
+    #[test]
+    fn unset_uses_default_silently() {
+        assert_eq!(parse_env("TENTRACKULE_TEST_UNSET", 60u64), 60);
+    }
+
+    #[test]
+    fn valid_value_is_parsed() {
+        unsafe { std::env::set_var("TENTRACKULE_TEST_VALID", "120") };
+        assert_eq!(parse_env("TENTRACKULE_TEST_VALID", 60u64), 120);
+        unsafe { std::env::remove_var("TENTRACKULE_TEST_VALID") };
+    }
+
+    #[test]
+    fn invalid_value_falls_back_to_default() {
+        unsafe { std::env::set_var("TENTRACKULE_TEST_INVALID", "not-a-number") };
+        assert_eq!(parse_env("TENTRACKULE_TEST_INVALID", 60u64), 60);
+        unsafe { std::env::remove_var("TENTRACKULE_TEST_INVALID") };
+    }
+
+    #[test]
+    fn blank_value_is_treated_as_unset() {
+        unsafe { std::env::set_var("TENTRACKULE_TEST_BLANK", "   ") };
+        assert_eq!(parse_env("TENTRACKULE_TEST_BLANK", 60u64), 60);
+        unsafe { std::env::remove_var("TENTRACKULE_TEST_BLANK") };
+    }
+
+    #[test]
+    fn zero_is_invalid_for_nonzero_and_uses_default() {
+        // The whole point of "config stricte" for the rate limits: a `0` is a
+        // parse error for NonZeroU32, so we keep the safe default rather than
+        // silently install an unusable limiter.
+        unsafe { std::env::set_var("TENTRACKULE_TEST_ZERO", "0") };
+        let default = NonZeroU32::new(20).unwrap();
+        assert_eq!(parse_env("TENTRACKULE_TEST_ZERO", default), default);
+        unsafe { std::env::remove_var("TENTRACKULE_TEST_ZERO") };
+    }
 }

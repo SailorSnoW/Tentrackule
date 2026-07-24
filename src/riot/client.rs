@@ -11,6 +11,7 @@ use tracing::{debug, error, trace, warn};
 
 use crate::config::USER_AGENT;
 use crate::error::AppError;
+use crate::metrics::Metrics;
 
 type GovernorRateLimiter = RateLimiter<NotKeyed, InMemoryState, DefaultClock>;
 
@@ -34,6 +35,8 @@ pub struct RiotClient {
     /// The slow window (personal key: 100 req/2 min). The per-second limiter
     /// alone would let a sustained load blow past this longer budget.
     limiter_per_window: Arc<GovernorRateLimiter>,
+    /// Shared counters; every request bumps the API-call total (Phase 6).
+    metrics: Arc<Metrics>,
 }
 
 impl RiotClient {
@@ -41,6 +44,7 @@ impl RiotClient {
         api_key: String,
         rate_limit_per_second: NonZeroU32,
         rate_limit_per_two_min: NonZeroU32,
+        metrics: Arc<Metrics>,
     ) -> Result<Self, AppError> {
         let limiter_per_second = Arc::new(RateLimiter::direct(Quota::per_second(
             rate_limit_per_second,
@@ -65,6 +69,7 @@ impl RiotClient {
             api_key,
             limiter_per_second,
             limiter_per_window,
+            metrics,
         })
     }
 
@@ -86,6 +91,7 @@ impl RiotClient {
             self.limiter_per_second.until_ready().await;
 
             trace!(endpoint, attempt, "🔷 API request");
+            self.metrics.record_api_call();
 
             let response = self
                 .http

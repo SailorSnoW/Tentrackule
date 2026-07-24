@@ -2,19 +2,28 @@ mod config;
 mod db;
 mod discord;
 mod error;
+mod metrics;
 mod poller;
 mod riot;
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use poise::serenity_prelude as serenity;
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
+use tokio::sync::watch;
 use tracing_subscriber::{EnvFilter, fmt, layer::SubscriberExt, util::SubscriberInitExt};
 
 use crate::config::Config;
 use crate::db::Repository;
 use crate::discord::{Data, ImageGenerator};
+use crate::metrics::Metrics;
 use crate::riot::RiotClient;
+
+/// How long to wait for the poller to finish its in-flight cycle on shutdown
+/// before closing the pool anyway. Kept short so it fits inside a deploy's
+/// SIGTERM→SIGKILL window (Fly's default `kill_timeout` is 5 s).
+const SHUTDOWN_DRAIN: Duration = Duration::from_secs(4);
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -53,6 +62,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let config = Config::from_env()?;
     tracing::info!("⚙️ Configuration loaded");
 
+    // Shared runtime metrics, emitted as an hourly stats line (Phase 6). Created
+    // before the clients so their API/cache/render activity is counted from boot.
+    let metrics = Arc::new(Metrics::new());
+    tokio::spawn(Arc::clone(&metrics).run_reporter());
+
     // Initialize database
     // WAL lets the poller's writes and the slash commands' reads proceed
     // concurrently; sqlx doesn't set a journal mode by default, so the fallback
@@ -76,6 +90,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         config.riot_api_key.clone(),
         config.riot_rate_limit_per_second,
         config.riot_rate_limit_per_two_min,
+        Arc::clone(&metrics),
     )?;
     tracing::info!("🔷 Riot API client initialized");
 
@@ -86,6 +101,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             config.ddragon_version_override.clone(),
             config.renderer_url.clone(),
             config.renderer_token.clone(),
+            Arc::clone(&metrics),
         )
         .await?,
     );
@@ -119,28 +135,90 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Get HTTP client for poller
     let http = Arc::clone(&client.http);
 
+    // Graceful-shutdown plumbing (Phase 6): a watch channel tells the poller to
+    // stop, and its JoinHandle lets us drain the in-flight cycle before closing
+    // the DB pool.
+    let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
     // Spawn match poller in background
     let poller_db = repository.clone();
     let poller_riot = riot_client.clone();
     let poller_image_gen = Arc::clone(&image_gen);
+    let poller_metrics = Arc::clone(&metrics);
     let polling_interval = config.polling_interval_secs;
 
-    tokio::spawn(async move {
+    let poller_handle = tokio::spawn(async move {
         poller::start_polling(
             poller_db,
             poller_riot,
             http,
             poller_image_gen,
             polling_interval,
+            poller_metrics,
+            shutdown_rx,
         )
         .await;
     });
 
     tracing::info!("🔄 Match poller spawned");
 
-    // Start the bot
+    // On SIGTERM (Fly deploy) / SIGINT (Ctrl-C): tell the poller to stop, then
+    // shut the shards down so `client.start()` below returns and we close cleanly.
+    let shard_manager = client.shard_manager.clone();
+    tokio::spawn(async move {
+        wait_for_shutdown_signal().await;
+        tracing::info!("🛑 Shutdown signal received; stopping gracefully");
+        let _ = shutdown_tx.send(true);
+        shard_manager.shutdown_all().await;
+    });
+
+    // Start the bot (blocks until the shard manager is shut down).
     tracing::info!("🎮 Starting Discord bot...");
     client.start().await?;
 
+    // Client stopped → let the poller finish its in-flight cycle (bounded), then
+    // close the pool so SQLite checkpoints the WAL cleanly instead of relying on
+    // recovery after a hard kill.
+    tracing::info!("🛑 Discord client stopped; draining poller");
+    if tokio::time::timeout(SHUTDOWN_DRAIN, poller_handle)
+        .await
+        .is_err()
+    {
+        tracing::warn!(
+            timeout_s = SHUTDOWN_DRAIN.as_secs(),
+            "🛑 ⚠️ Poller did not drain in time; closing anyway"
+        );
+    }
+    pool.close().await;
+    tracing::info!("👋 Shutdown complete");
+
     Ok(())
+}
+
+/// Resolve on the first shutdown signal: SIGTERM (Fly deploy) or SIGINT (Ctrl-C)
+/// on Unix, Ctrl-C elsewhere. If the Unix handlers can't be installed, fall back
+/// to Ctrl-C alone rather than never resolving.
+async fn wait_for_shutdown_signal() {
+    #[cfg(unix)]
+    {
+        use tokio::signal::unix::{SignalKind, signal};
+        match (
+            signal(SignalKind::terminate()),
+            signal(SignalKind::interrupt()),
+        ) {
+            (Ok(mut term), Ok(mut int)) => {
+                tokio::select! {
+                    _ = term.recv() => {}
+                    _ = int.recv() => {}
+                }
+            }
+            _ => {
+                let _ = tokio::signal::ctrl_c().await;
+            }
+        }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }

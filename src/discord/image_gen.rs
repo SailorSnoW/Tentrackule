@@ -28,6 +28,7 @@ use super::scorecard::{CARD_WIDTH_PX, ScorecardVm};
 use crate::config::USER_AGENT;
 use crate::db::{Player, RankInfo};
 use crate::error::AppError;
+use crate::metrics::Metrics;
 use crate::riot::{InfoDto, ParticipantDto};
 
 /// Timeout for one render round-trip. Generous enough to absorb the renderer's
@@ -262,7 +263,7 @@ impl ImageCache {
         }
     }
 
-    async fn get_or_fetch(&self, http: &Client, url: &str) -> Option<String> {
+    async fn get_or_fetch(&self, http: &Client, url: &str, metrics: &Metrics) -> Option<String> {
         let key = Self::cache_key(url);
         // Freshness is per-URL: immutable DDragon assets never expire, mutable
         // CommunityDragon assets carry the TTL. The key is `hash(url)`, so the
@@ -276,6 +277,7 @@ impl ImageCache {
                 && is_fresh(entry.created_at, ttl)
             {
                 entry.last_access.store(self.tick(), Ordering::Relaxed);
+                metrics.record_cache_hit();
                 trace!(url, "🖼️ Memory cache hit");
                 return Some(to_data_uri(&entry.bytes));
             }
@@ -290,6 +292,7 @@ impl ImageCache {
                 if let Ok(bytes) = fs::read(&cache_path).await {
                     let data_uri = to_data_uri(&bytes);
                     self.store_in_memory(key, Arc::from(bytes), modified).await;
+                    metrics.record_cache_hit();
                     trace!(url, "🖼️ Disk cache hit");
                     return Some(data_uri);
                 }
@@ -299,7 +302,8 @@ impl ImageCache {
             }
         }
 
-        // 3. Network.
+        // 3. Network — neither layer served it, so this read is a cache miss.
+        metrics.record_cache_miss();
         trace!(url, "🖼️ Fetching image");
         let bytes = match http.get(url).send().await {
             Ok(response) if response.status().is_success() => match response.bytes().await {
@@ -393,6 +397,8 @@ pub struct ImageGenerator {
     /// reused. `None` until the one-time fetch succeeds; a failed attempt is not
     /// cached, so a later render retries it (the card meanwhile uses `<link>`).
     latin_font_css: RwLock<Option<Arc<str>>>,
+    /// Shared counters: cache hit/miss on asset inlining, render latency (Phase 6).
+    metrics: Arc<Metrics>,
 }
 
 impl ImageGenerator {
@@ -400,6 +406,7 @@ impl ImageGenerator {
         ddragon_version_override: Option<String>,
         renderer_url: Option<String>,
         renderer_token: Option<String>,
+        metrics: Arc<Metrics>,
     ) -> Result<Self, AppError> {
         let http = Client::builder().user_agent(USER_AGENT).build()?;
 
@@ -432,6 +439,7 @@ impl ImageGenerator {
             ddragon_version_override,
             renderer,
             latin_font_css: RwLock::new(None),
+            metrics,
         })
     }
 
@@ -565,7 +573,7 @@ impl ImageGenerator {
         let map: HashMap<String, String> = stream::iter(urls)
             .map(|url| async move {
                 self.cache
-                    .get_or_fetch(&self.http, &url)
+                    .get_or_fetch(&self.http, &url, &self.metrics)
                     .await
                     .map(|data_uri| (url, data_uri))
             })
@@ -623,6 +631,9 @@ impl ImageGenerator {
             },
         };
 
+        // Time the full round-trip so the hourly stats line can report render
+        // p50/p95 — the number that shows cold-start cost after Phase 3.B.
+        let started = std::time::Instant::now();
         let response = self
             .http
             .post(&url)
@@ -642,6 +653,7 @@ impl ImageGenerator {
         }
 
         let bytes = response.bytes().await?;
+        self.metrics.record_render(started.elapsed());
         debug!(size = bytes.len(), "🖼️ ✅ Card rendered via renderer");
         Ok(bytes.to_vec())
     }
@@ -956,7 +968,11 @@ mod tests {
 
         // Client is required by the signature but never used on a disk hit.
         let client = reqwest::Client::new();
-        let uri = cache.get_or_fetch(&client, url).await.expect("disk hit");
+        let metrics = crate::metrics::Metrics::new();
+        let uri = cache
+            .get_or_fetch(&client, url, &metrics)
+            .await
+            .expect("disk hit");
         assert!(uri.starts_with("data:image/png;base64,"));
         assert!(
             cache.memory_cache.read().await.contains_key(&key),

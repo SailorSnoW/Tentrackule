@@ -4,12 +4,14 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use futures::stream::{self, StreamExt};
 use poise::serenity_prelude::{ChannelId, CreateAttachment, CreateEmbed, CreateMessage, Http};
+use tokio::sync::watch;
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{Span, debug, error, info, instrument, warn};
 
 use crate::db::{Player, RankInfo, Repository, TrackedPlayer};
 use crate::discord::image_gen::{ImageGenerator, MasteryInfo, MatchImageContext};
 use crate::error::AppError;
+use crate::metrics::Metrics;
 use crate::riot::{Platform, RiotClient};
 
 // === Activity-adaptive polling cadence ===
@@ -120,6 +122,8 @@ pub async fn start_polling(
     http: Arc<Http>,
     image_gen: Arc<ImageGenerator>,
     interval_secs: u64,
+    metrics: Arc<Metrics>,
+    mut shutdown: watch::Receiver<bool>,
 ) {
     let mut ticker = interval(Duration::from_secs(interval_secs));
     // If a cycle overruns the interval, space the next tick out instead of
@@ -135,12 +139,23 @@ pub async fn start_polling(
     info!(interval_secs, "🔄 Match poller started");
 
     loop {
-        ticker.tick().await;
-
-        if let Err(e) =
-            poll_players(&db, &riot, &http, &image_gen, active_cadence, &mut schedule).await
-        {
-            error!(error = ?e, "🔄 ❌ Polling cycle failed");
+        tokio::select! {
+            _ = ticker.tick() => {
+                metrics.record_poll_cycle();
+                if let Err(e) =
+                    poll_players(&db, &riot, &http, &image_gen, active_cadence, &mut schedule).await
+                {
+                    error!(error = ?e, "🔄 ❌ Polling cycle failed");
+                }
+            }
+            // Graceful shutdown (Phase 6). A `select!` branch that has already
+            // begun awaiting `poll_players` runs to completion — the future is
+            // not cancelled mid-cycle — so an in-flight player check finishes
+            // cleanly; we only stop *between* cycles.
+            _ = shutdown.changed() => {
+                info!("🔄 🛑 Shutdown requested; poller stopping");
+                break;
+            }
         }
     }
 }
@@ -430,33 +445,54 @@ async fn process_match(
     // Get all guilds tracking this player
     let guilds = db.get_guilds_tracking_player(player.id).await?;
 
-    // Send the card (or text fallback) to all guilds
+    // Send the card (or text fallback) to every tracking guild. The rendered
+    // bytes are identical across guilds, so upload the card once and then embed
+    // that first message's CDN URL in the rest, instead of re-uploading the same
+    // JPEG N times (Phase 6). This only changes anything when >1 guild tracks the
+    // player; the common single-guild case posts the native attachment exactly as
+    // before. `reuse_url` holds the uploaded card's CDN URL once we have it.
+    let mut reuse_url: Option<String> = None;
     for guild in guilds {
-        if let Some(channel_id) = guild.alert_channel_id {
-            let channel = ChannelId::new(channel_id as u64);
-            let message = match (&image_data, &fallback_embed) {
-                (Some(bytes), _) => {
-                    let attachment = CreateAttachment::bytes(
-                        bytes.as_ref(),
-                        ImageGenerator::ATTACHMENT_FILENAME,
-                    );
-                    CreateMessage::new().add_file(attachment)
-                }
-                (None, Some(embed)) => CreateMessage::new().embed(embed.clone()),
-                // Unreachable: `fallback_embed` is always built when there is no
-                // image, but skip defensively rather than send an empty message.
-                (None, None) => continue,
-            };
+        let Some(channel_id) = guild.alert_channel_id else {
+            continue;
+        };
+        let channel = ChannelId::new(channel_id as u64);
 
-            if let Err(e) = channel.send_message(http, message).await {
+        let message = match (&image_data, &reuse_url, &fallback_embed) {
+            // Card already uploaded once → reference its CDN URL (no re-upload).
+            (Some(_), Some(url), _) => CreateMessage::new().embed(CreateEmbed::new().image(url)),
+            // First guild with a card → upload the bytes as a native attachment.
+            (Some(bytes), None, _) => {
+                let attachment =
+                    CreateAttachment::bytes(bytes.as_ref(), ImageGenerator::ATTACHMENT_FILENAME);
+                CreateMessage::new().add_file(attachment)
+            }
+            // No card → text fallback embed (cheap; nothing to reuse).
+            (None, _, Some(embed)) => CreateMessage::new().embed(embed.clone()),
+            // Unreachable: a fallback embed is always built when there is no card,
+            // but skip defensively rather than send an empty message.
+            (None, _, None) => continue,
+        };
+
+        match channel.send_message(http, message).await {
+            Ok(sent) => {
+                debug!(guild_id = guild.id, channel_id, "🎮 ✅ Alert sent");
+                // Capture the uploaded card's CDN URL from the first successful
+                // send so the remaining guilds can reference it. Only when we
+                // actually uploaded bytes (a card exists and we've not captured a
+                // URL yet); a send that returns no attachment leaves `reuse_url`
+                // unset, so the next guild simply re-uploads (safe fallback).
+                if image_data.is_some() && reuse_url.is_none() {
+                    reuse_url = sent.attachments.first().map(|a| a.url.clone());
+                }
+            }
+            Err(e) => {
                 error!(
                     error = ?e,
                     guild_id = guild.id,
                     channel_id,
                     "🎮 ❌ Failed to send alert message"
                 );
-            } else {
-                debug!(guild_id = guild.id, channel_id, "🎮 ✅ Alert sent");
             }
         }
     }

@@ -8,7 +8,14 @@ license = "MIT"
 
 [dependencies]
 # Async runtime
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "time", "sync"] }
+tokio = { version = "1", features = [
+    "macros",
+    "rt-multi-thread",
+    "time",
+    "sync",
+    # SIGTERM/SIGINT handling for graceful shutdown on Fly deploys.
+    "signal",
+] }
 
 # Discord
 poise = "0.6"
