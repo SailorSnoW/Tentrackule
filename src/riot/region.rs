@@ -43,12 +43,16 @@ pub enum Platform {
     VN2,
 }
 
+fn base_url(host: &str) -> String {
+    format!("https://{host}.api.riotgames.com")
+}
+
 impl Platform {
-    pub fn base_url(&self) -> String {
-        format!("https://{}.api.riotgames.com", self.as_str())
+    pub fn base_url(self) -> String {
+        base_url(self.as_str())
     }
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::BR1 => "br1",
             Self::LA1 => "la1",
@@ -79,7 +83,7 @@ impl Platform {
         }
     }
 
-    pub fn display_name(&self) -> &'static str {
+    pub fn display_name(self) -> &'static str {
         match self {
             Self::BR1 => "Brazil",
             Self::LA1 => "Latin America North",
@@ -144,11 +148,11 @@ pub enum Region {
 }
 
 impl Region {
-    pub fn base_url(&self) -> String {
-        format!("https://{}.api.riotgames.com", self.as_str())
+    pub fn base_url(self) -> String {
+        base_url(self.as_str())
     }
 
-    pub fn as_str(&self) -> &'static str {
+    pub fn as_str(self) -> &'static str {
         match self {
             Self::Americas => "americas",
             Self::Asia => "asia",

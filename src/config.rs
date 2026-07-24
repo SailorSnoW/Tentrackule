@@ -27,8 +27,8 @@ impl Config {
         dotenvy::dotenv().ok();
 
         const DEFAULT_POLLING_INTERVAL_SECS: u64 = 60;
-        const DEFAULT_RIOT_RATE_LIMIT_PER_SECOND: u32 = 20;
-        const DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN: u32 = 100;
+        const DEFAULT_RIOT_RATE_LIMIT_PER_SECOND: NonZeroU32 = NonZeroU32::new(20).unwrap();
+        const DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN: NonZeroU32 = NonZeroU32::new(100).unwrap();
 
         let discord_token = env::var("DISCORD_TOKEN")
             .map_err(|_| AppError::Config("DISCORD_TOKEN must be set".into()))?;
@@ -42,15 +42,14 @@ impl Config {
         let polling_interval_secs =
             parse_env("POLLING_INTERVAL_SECS", DEFAULT_POLLING_INTERVAL_SECS);
 
-        let nonzero = |n: u32| NonZeroU32::new(n).unwrap_or(NonZeroU32::MIN);
         let riot_rate_limit_per_second = parse_env(
             "RIOT_RATE_LIMIT_PER_SECOND",
-            nonzero(DEFAULT_RIOT_RATE_LIMIT_PER_SECOND),
+            DEFAULT_RIOT_RATE_LIMIT_PER_SECOND,
         );
 
         let riot_rate_limit_per_two_min = parse_env(
             "RIOT_RATE_LIMIT_PER_TWO_MIN",
-            nonzero(DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN),
+            DEFAULT_RIOT_RATE_LIMIT_PER_TWO_MIN,
         );
 
         let ddragon_version_override = non_empty_env("DDRAGON_VERSION");

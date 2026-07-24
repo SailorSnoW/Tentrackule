@@ -1,5 +1,5 @@
 mod client;
-pub mod endpoints;
+mod endpoints;
 mod region;
 mod types;
 

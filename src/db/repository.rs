@@ -3,31 +3,40 @@ use sqlx::SqlitePool;
 use super::models::{Guild, Player, RankInfo, TrackedPlayer};
 use crate::error::AppError;
 
-const PLAYER_COLUMN_NAMES: [&str; 12] = [
-    "id",
-    "puuid",
-    "game_name",
-    "tag_line",
-    "region",
-    "last_match_id",
-    "last_rank_solo_tier",
-    "last_rank_solo_rank",
-    "last_rank_solo_lp",
-    "last_rank_flex_tier",
-    "last_rank_flex_rank",
-    "last_rank_flex_lp",
-];
+/// Expands to the `Player` column list, each name prefixed by `$p` (use `""`
+/// unqualified, `"p."` when the query aliases `players` as `p`).
+macro_rules! player_columns {
+    ($p:literal) => {
+        concat!(
+            $p,
+            "id, ",
+            $p,
+            "puuid, ",
+            $p,
+            "game_name, ",
+            $p,
+            "tag_line, ",
+            $p,
+            "region, ",
+            $p,
+            "last_match_id, ",
+            $p,
+            "last_rank_solo_tier, ",
+            $p,
+            "last_rank_solo_rank, ",
+            $p,
+            "last_rank_solo_lp, ",
+            $p,
+            "last_rank_flex_tier, ",
+            $p,
+            "last_rank_flex_rank, ",
+            $p,
+            "last_rank_flex_lp"
+        )
+    };
+}
 
 const MATCH_HISTORY_KEEP: u32 = 20;
-
-fn player_columns(alias: Option<&str>) -> String {
-    let prefix = alias.map(|a| format!("{a}.")).unwrap_or_default();
-    PLAYER_COLUMN_NAMES
-        .iter()
-        .map(|col| format!("{prefix}{col}"))
-        .collect::<Vec<_>>()
-        .join(", ")
-}
 
 #[derive(Clone, Debug)]
 pub struct Repository {
@@ -46,26 +55,22 @@ impl Repository {
         tag_line: &str,
         region: &str,
     ) -> Result<Player, AppError> {
-        let columns = player_columns(None);
-        let query = format!(
-            r#"
-            INSERT INTO players (puuid, game_name, tag_line, region)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(puuid) DO UPDATE SET
-                game_name = excluded.game_name,
-                tag_line = excluded.tag_line,
-                region = excluded.region
-            RETURNING {columns}
-            "#
-        );
-
-        let player = sqlx::query_as::<_, Player>(&query)
-            .bind(puuid)
-            .bind(game_name)
-            .bind(tag_line)
-            .bind(region)
-            .fetch_one(&self.pool)
-            .await?;
+        let player = sqlx::query_as::<_, Player>(concat!(
+            "INSERT INTO players (puuid, game_name, tag_line, region)
+             VALUES (?, ?, ?, ?)
+             ON CONFLICT(puuid) DO UPDATE SET
+                 game_name = excluded.game_name,
+                 tag_line = excluded.tag_line,
+                 region = excluded.region
+             RETURNING ",
+            player_columns!("")
+        ))
+        .bind(puuid)
+        .bind(game_name)
+        .bind(tag_line)
+        .bind(region)
+        .fetch_one(&self.pool)
+        .await?;
         Ok(player)
     }
 
@@ -74,9 +79,10 @@ impl Repository {
         game_name: &str,
         tag_line: &str,
     ) -> Result<Option<Player>, AppError> {
-        let columns = player_columns(None);
-        let player = sqlx::query_as::<_, Player>(&format!(
-            "SELECT {columns} FROM players WHERE LOWER(game_name) = LOWER(?) AND LOWER(tag_line) = LOWER(?)"
+        let player = sqlx::query_as::<_, Player>(concat!(
+            "SELECT ",
+            player_columns!(""),
+            " FROM players WHERE LOWER(game_name) = LOWER(?) AND LOWER(tag_line) = LOWER(?)"
         ))
         .bind(game_name)
         .bind(tag_line)
@@ -86,19 +92,18 @@ impl Repository {
     }
 
     pub async fn get_tracked_players_with_activity(&self) -> Result<Vec<TrackedPlayer>, AppError> {
-        let columns = player_columns(Some("p"));
-        let players = sqlx::query_as::<_, TrackedPlayer>(&format!(
-            r#"
-            SELECT DISTINCT {columns},
-                COALESCE(
-                    (SELECT MAX(mr.created_at) FROM match_results mr WHERE mr.player_id = p.id),
-                    p.created_at
-                ) AS last_activity_secs
-            FROM players p
-            INNER JOIN guild_players gp ON p.id = gp.player_id
-            INNER JOIN guilds g ON gp.guild_id = g.id
-            WHERE g.alert_channel_id IS NOT NULL
-            "#
+        let players = sqlx::query_as::<_, TrackedPlayer>(concat!(
+            "SELECT DISTINCT ",
+            player_columns!("p."),
+            ",
+             COALESCE(
+                 (SELECT MAX(mr.created_at) FROM match_results mr WHERE mr.player_id = p.id),
+                 p.created_at
+             ) AS last_activity_secs
+             FROM players p
+             INNER JOIN guild_players gp ON p.id = gp.player_id
+             INNER JOIN guilds g ON gp.guild_id = g.id
+             WHERE g.alert_channel_id IS NOT NULL"
         ))
         .fetch_all(&self.pool)
         .await?;
@@ -264,15 +269,13 @@ impl Repository {
     }
 
     pub async fn get_guild_players(&self, guild_id: u64) -> Result<Vec<Player>, AppError> {
-        let columns = player_columns(Some("p"));
-        let players = sqlx::query_as::<_, Player>(&format!(
-            r#"
-            SELECT {columns}
-            FROM players p
-            INNER JOIN guild_players gp ON p.id = gp.player_id
-            WHERE gp.guild_id = ?
-            ORDER BY p.game_name ASC
-            "#
+        let players = sqlx::query_as::<_, Player>(concat!(
+            "SELECT ",
+            player_columns!("p."),
+            " FROM players p
+             INNER JOIN guild_players gp ON p.id = gp.player_id
+             WHERE gp.guild_id = ?
+             ORDER BY p.game_name ASC"
         ))
         .bind(guild_id as i64)
         .fetch_all(&self.pool)

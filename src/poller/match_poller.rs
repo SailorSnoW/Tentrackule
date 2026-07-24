@@ -8,11 +8,11 @@ use tokio::sync::watch;
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::{Span, debug, error, info, instrument, warn};
 
-use crate::db::{Player, RankInfo, Repository, TrackedPlayer};
+use crate::db::{Guild, Player, RankInfo, Repository, TrackedPlayer};
 use crate::discord::image_gen::{ImageGenerator, MasteryInfo, MatchImageContext};
 use crate::error::AppError;
 use crate::metrics::Metrics;
-use crate::riot::{Platform, RiotClient};
+use crate::riot::{InfoDto, Platform, RiotClient};
 
 const ACTIVE_WINDOW: Duration = Duration::from_secs(2 * 60 * 60);
 const DORMANT_WINDOW: Duration = Duration::from_secs(7 * 24 * 60 * 60);
@@ -228,6 +228,17 @@ async fn check_player_match(
     Ok(())
 }
 
+/// Picks the solo- or flex-queue variant of a value, or `None` for any other queue.
+fn for_queue<T>(info: &InfoDto, solo: T, flex: T) -> Option<T> {
+    if info.is_solo_queue() {
+        Some(solo)
+    } else if info.is_flex_queue() {
+        Some(flex)
+    } else {
+        None
+    }
+}
+
 fn matches_to_process<'a>(match_ids: &'a [String], last_seen: Option<&str>) -> Vec<&'a String> {
     let newest_first: Vec<&String> = match last_seen {
         Some(last) => match_ids
@@ -283,13 +294,12 @@ async fn process_match(
 
     let is_ranked = match_data.info.is_ranked();
 
-    let old_rank = if match_data.info.is_solo_queue() {
-        player.solo_rank_info()
-    } else if match_data.info.is_flex_queue() {
-        player.flex_rank_info()
-    } else {
-        None
-    };
+    let old_rank = for_queue(
+        &match_data.info,
+        player.solo_rank_info(),
+        player.flex_rank_info(),
+    )
+    .flatten();
 
     let (new_solo_rank, new_flex_rank) = if is_ranked {
         fetch_rank_info(riot, platform, &player.puuid).await?
@@ -297,13 +307,12 @@ async fn process_match(
         (None, None)
     };
 
-    let new_rank = if match_data.info.is_solo_queue() {
-        new_solo_rank.as_ref()
-    } else if match_data.info.is_flex_queue() {
-        new_flex_rank.as_ref()
-    } else {
-        None
-    };
+    let new_rank = for_queue(
+        &match_data.info,
+        new_solo_rank.as_ref(),
+        new_flex_rank.as_ref(),
+    )
+    .flatten();
 
     let queue_id = match_data.info.queue_id;
     if !match_data.info.game_ended_in_early_surrender
@@ -356,7 +365,31 @@ async fn process_match(
     let fallback_embed = image_data.is_none().then(|| build_fallback_embed(&ctx));
 
     let guilds = db.get_guilds_tracking_player(player.id).await?;
+    announce(
+        http,
+        &guilds,
+        image_data.as_deref(),
+        fallback_embed.as_ref(),
+    )
+    .await;
 
+    db.update_player_last_match(player.id, match_id).await?;
+    if is_ranked {
+        db.update_player_rank(player.id, new_solo_rank.as_ref(), new_flex_rank.as_ref())
+            .await?;
+    }
+
+    Ok(())
+}
+
+/// Posts the alert to every guild watching the player. The card is uploaded once;
+/// the remaining guilds re-embed the resulting attachment URL.
+async fn announce(
+    http: &Http,
+    guilds: &[Guild],
+    image_data: Option<&[u8]>,
+    fallback_embed: Option<&CreateEmbed>,
+) {
     let mut reuse_url: Option<String> = None;
     for guild in guilds {
         let Some(channel_id) = guild.alert_channel_id else {
@@ -364,13 +397,12 @@ async fn process_match(
         };
         let channel = ChannelId::new(channel_id as u64);
 
-        let message = match (&image_data, &reuse_url, &fallback_embed) {
+        let message = match (image_data, &reuse_url, fallback_embed) {
             (Some(_), Some(url), _) => CreateMessage::new().embed(CreateEmbed::new().image(url)),
-            (Some(bytes), None, _) => {
-                let attachment =
-                    CreateAttachment::bytes(bytes.as_ref(), ImageGenerator::ATTACHMENT_FILENAME);
-                CreateMessage::new().add_file(attachment)
-            }
+            (Some(bytes), None, _) => CreateMessage::new().add_file(CreateAttachment::bytes(
+                bytes,
+                ImageGenerator::ATTACHMENT_FILENAME,
+            )),
             (None, _, Some(embed)) => CreateMessage::new().embed(embed.clone()),
             (None, _, None) => continue,
         };
@@ -392,14 +424,6 @@ async fn process_match(
             }
         }
     }
-
-    db.update_player_last_match(player.id, match_id).await?;
-    if is_ranked {
-        db.update_player_rank(player.id, new_solo_rank.as_ref(), new_flex_rank.as_ref())
-            .await?;
-    }
-
-    Ok(())
 }
 
 async fn fetch_mastery(

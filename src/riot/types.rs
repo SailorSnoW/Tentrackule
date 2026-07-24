@@ -96,6 +96,10 @@ impl InfoDto {
             .unwrap_or(&self.game_version)
     }
 
+    pub fn game_minutes(&self) -> f64 {
+        self.game_duration as f64 / 60.0
+    }
+
     pub fn duration_formatted(&self) -> String {
         let minutes = self.game_duration / 60;
         let seconds = self.game_duration % 60;

@@ -113,127 +113,27 @@ pub async fn dev_test_alert(
         ..Default::default()
     };
 
-    let opp_win = !win;
-    let participants = vec![
-        participant.clone(),
-        demo_participant(
-            "blue-top",
-            100,
-            &pos("TOP"),
-            "Garen",
-            win,
-            5,
-            4,
-            7,
-            18_000,
-            210,
-            11_000,
-        ),
-        demo_participant(
-            "blue-jgl",
-            100,
-            &pos("JUNGLE"),
-            "LeeSin",
-            win,
-            6,
-            5,
-            11,
-            16_000,
-            150,
-            10_500,
-        ),
-        demo_participant(
-            "blue-bot",
-            100,
-            &pos("BOTTOM"),
-            "Jinx",
-            win,
-            11,
-            3,
-            9,
-            32_000,
-            240,
-            13_500,
-        ),
-        demo_participant(
-            "blue-sup",
-            100,
-            &pos("UTILITY"),
-            "Thresh",
-            win,
-            2,
-            6,
-            21,
-            9_000,
-            35,
-            8_500,
-        ),
-        demo_participant(
-            "red-mid",
-            200,
-            &pos("MIDDLE"),
-            "Zed",
-            opp_win,
-            7,
-            8,
-            5,
-            24_000,
-            195,
-            11_800,
-        ),
-        demo_participant(
-            "red-top",
-            200,
-            &pos("TOP"),
-            "Darius",
-            opp_win,
-            6,
-            7,
-            4,
-            21_000,
-            205,
-            11_200,
-        ),
-        demo_participant(
-            "red-jgl",
-            200,
-            &pos("JUNGLE"),
-            "Elise",
-            opp_win,
-            5,
-            7,
-            8,
-            15_000,
-            140,
-            9_800,
-        ),
-        demo_participant(
-            "red-bot",
-            200,
-            &pos("BOTTOM"),
-            "Caitlyn",
-            opp_win,
-            9,
-            6,
-            6,
-            30_000,
-            250,
-            13_000,
-        ),
-        demo_participant(
-            "red-sup",
-            200,
-            &pos("UTILITY"),
-            "Lulu",
-            opp_win,
-            3,
-            6,
-            14,
-            8_500,
-            40,
-            8_200,
-        ),
-    ];
+    let mut participants = vec![participant.clone()];
+    participants.extend(DEMO_TEAM.map(
+        |(puuid, team_id, position, champion, kills, deaths, assists, damage, cs, gold)| {
+            ParticipantDto {
+                puuid: puuid.to_string(),
+                team_id,
+                team_position: pos(position),
+                champion_name: champion.to_string(),
+                win: (team_id == 100) == win,
+                kills,
+                deaths,
+                assists,
+                total_damage_dealt_to_champions: damage,
+                total_minions_killed: cs,
+                gold_earned: gold,
+                vision_score: 20,
+                champ_level: 16,
+                ..Default::default()
+            }
+        },
+    ));
 
     let match_info = InfoDto {
         game_duration: if remake { 180 } else { 1847 },
@@ -329,37 +229,48 @@ pub async fn dev_test_alert(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
-fn demo_participant(
-    puuid: &str,
-    team_id: i32,
-    position: &str,
-    champion: &str,
-    win: bool,
-    kills: i32,
-    deaths: i32,
-    assists: i32,
-    damage: i64,
-    cs: i32,
-    gold: i64,
-) -> ParticipantDto {
-    ParticipantDto {
-        puuid: puuid.to_string(),
-        team_position: position.to_string(),
-        champion_name: champion.to_string(),
-        kills,
-        deaths,
-        assists,
-        total_damage_dealt_to_champions: damage,
-        total_minions_killed: cs,
-        vision_score: 20,
-        gold_earned: gold,
-        win,
-        team_id,
-        champ_level: 16,
-        ..Default::default()
-    }
-}
+type DemoRow = (
+    &'static str,
+    i32,
+    &'static str,
+    &'static str,
+    i32,
+    i32,
+    i32,
+    i64,
+    i32,
+    i64,
+);
+
+const DEMO_TEAM: [DemoRow; 9] = [
+    (
+        "blue-top", 100, "TOP", "Garen", 5, 4, 7, 18_000, 210, 11_000,
+    ),
+    (
+        "blue-jgl", 100, "JUNGLE", "LeeSin", 6, 5, 11, 16_000, 150, 10_500,
+    ),
+    (
+        "blue-bot", 100, "BOTTOM", "Jinx", 11, 3, 9, 32_000, 240, 13_500,
+    ),
+    (
+        "blue-sup", 100, "UTILITY", "Thresh", 2, 6, 21, 9_000, 35, 8_500,
+    ),
+    (
+        "red-mid", 200, "MIDDLE", "Zed", 7, 8, 5, 24_000, 195, 11_800,
+    ),
+    (
+        "red-top", 200, "TOP", "Darius", 6, 7, 4, 21_000, 205, 11_200,
+    ),
+    (
+        "red-jgl", 200, "JUNGLE", "Elise", 5, 7, 8, 15_000, 140, 9_800,
+    ),
+    (
+        "red-bot", 200, "BOTTOM", "Caitlyn", 9, 6, 6, 30_000, 250, 13_000,
+    ),
+    (
+        "red-sup", 200, "UTILITY", "Lulu", 3, 6, 14, 8_500, 40, 8_200,
+    ),
+];
 
 fn objectives(dragon: i32, baron: i32, tower: i32) -> ObjectivesDto {
     ObjectivesDto {

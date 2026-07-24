@@ -22,36 +22,29 @@ impl Player {
     }
 
     pub fn solo_rank_info(&self) -> Option<RankInfo> {
-        match (
+        stored_rank(
             &self.last_rank_solo_tier,
             &self.last_rank_solo_rank,
             self.last_rank_solo_lp,
-        ) {
-            (Some(tier), Some(rank), Some(lp)) => Some(RankInfo {
-                tier: tier.clone(),
-                rank: rank.clone(),
-                lp,
-                ..Default::default()
-            }),
-            _ => None,
-        }
+        )
     }
 
     pub fn flex_rank_info(&self) -> Option<RankInfo> {
-        match (
+        stored_rank(
             &self.last_rank_flex_tier,
             &self.last_rank_flex_rank,
             self.last_rank_flex_lp,
-        ) {
-            (Some(tier), Some(rank), Some(lp)) => Some(RankInfo {
-                tier: tier.clone(),
-                rank: rank.clone(),
-                lp,
-                ..Default::default()
-            }),
-            _ => None,
-        }
+        )
     }
+}
+
+fn stored_rank(tier: &Option<String>, rank: &Option<String>, lp: Option<i32>) -> Option<RankInfo> {
+    Some(RankInfo {
+        tier: tier.clone()?,
+        rank: rank.clone()?,
+        lp: lp?,
+        ..Default::default()
+    })
 }
 
 #[derive(Debug, Clone, Default)]
