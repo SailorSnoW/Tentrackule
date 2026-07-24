@@ -1,12 +1,3 @@
-//! Lightweight runtime metrics, logged once an hour (Phase 6).
-//!
-//! A single shared [`Metrics`] is threaded into the Riot client (API call
-//! volume), the image cache (hit-rate), and the renderer (latency), plus the
-//! poller (cycle count). [`Metrics::run_reporter`] drains and logs them on a
-//! fixed interval, then resets the window so each line covers the last hour —
-//! giving the before/after numbers the Phase 3.B/4 exit criteria ask for without
-//! standing up a metrics backend.
-
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::PoisonError;
@@ -16,29 +7,16 @@ use std::time::Duration;
 use tokio::time::{MissedTickBehavior, interval};
 use tracing::info;
 
-/// How often the stats line is emitted.
-const REPORT_INTERVAL: Duration = Duration::from_secs(60 * 60); // 1h
+const REPORT_INTERVAL: Duration = Duration::from_secs(60 * 60);
 
-/// Cap on render samples retained per window, so a pathological burst can't grow
-/// the latency buffer without bound. Far above the handful of renders/hour seen
-/// in practice; extra samples in a window are simply dropped from the percentile.
 const MAX_RENDER_SAMPLES: usize = 4096;
 
-/// Shared, cheap-to-update counters for the hourly stats line. All the hot-path
-/// updates are relaxed atomics (or a briefly-held mutex for the latency vec), so
-/// instrumentation never contends with real work.
 #[derive(Debug, Default)]
 pub struct Metrics {
-    /// Outbound Riot API requests — every HTTP attempt, retries included, so the
-    /// number reflects true API volume (Phase 4's "appels/jour").
     riot_api_calls: AtomicU64,
-    /// Poll cycles run (one per tick, including idle ticks that polled nobody).
     poll_cycles: AtomicU64,
-    /// Asset reads served without a network fetch (in-RAM or disk hit).
     cache_hits: AtomicU64,
-    /// Asset reads that fell through to a network fetch.
     cache_misses: AtomicU64,
-    /// Successful render round-trip durations (ms) this window, for percentiles.
     render_latencies_ms: Mutex<Vec<u32>>,
 }
 
@@ -47,27 +25,22 @@ impl Metrics {
         Self::default()
     }
 
-    /// One outbound Riot API request was sent.
     pub fn record_api_call(&self) {
         self.riot_api_calls.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// One poll cycle ran.
     pub fn record_poll_cycle(&self) {
         self.poll_cycles.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// An asset was served from the cache (no network).
     pub fn record_cache_hit(&self) {
         self.cache_hits.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// An asset read missed the cache and went to the network.
     pub fn record_cache_miss(&self) {
         self.cache_misses.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Record one successful render's wall-clock round-trip latency.
     pub fn record_render(&self, latency: Duration) {
         let mut samples = self
             .render_latencies_ms
@@ -78,12 +51,9 @@ impl Metrics {
         }
     }
 
-    /// Log the stats line every [`REPORT_INTERVAL`], then reset the window. Runs
-    /// until the process exits; spawn it on the shared `Arc<Metrics>`.
     pub async fn run_reporter(self: Arc<Self>) {
         let mut ticker = interval(REPORT_INTERVAL);
         ticker.set_missed_tick_behavior(MissedTickBehavior::Delay);
-        // The first tick fires immediately; skip it (the window would be empty).
         ticker.tick().await;
         loop {
             ticker.tick().await;
@@ -91,8 +61,6 @@ impl Metrics {
         }
     }
 
-    /// Snapshot-and-reset every counter, then emit one structured line. Splitting
-    /// this out of the loop keeps it unit-testable.
     fn report(&self) {
         let api_calls = self.riot_api_calls.swap(0, Ordering::Relaxed);
         let cycles = self.poll_cycles.swap(0, Ordering::Relaxed);
@@ -129,33 +97,25 @@ impl Metrics {
             renders = samples.len(),
             render_p50_ms = percentile(&samples, 50),
             render_p95_ms = percentile(&samples, 95),
-            // 0 when unreadable (e.g. non-Linux local dev); prod is Linux.
             rss_mb = resident_set_size_mb().unwrap_or(0),
             "📊 hourly stats"
         );
     }
 }
 
-/// Nearest-rank `p`-th percentile (0–100) of a **pre-sorted** slice; 0 if empty.
 fn percentile(sorted: &[u32], p: u32) -> u32 {
     if sorted.is_empty() {
         return 0;
     }
     let n = sorted.len();
-    // rank = ceil(p * n / 100), 1-based, then clamp to a valid index.
     let rank = (p as usize * n).div_ceil(100);
     let idx = rank.saturating_sub(1).min(n - 1);
     sorted[idx]
 }
 
-/// Resident set size in MB from `/proc/self/statm` (Linux). `None` elsewhere
-/// (e.g. local macOS dev), where the stats line logs 0.
 fn resident_set_size_mb() -> Option<u64> {
-    // Fields are page counts: `size resident shared …`; field 1 is resident.
     let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
     let resident_pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
-    // 4 KiB is the page size on x86-64/aarch64 Linux (where the bot runs); good
-    // enough for an order-of-magnitude RSS readout without pulling in libc.
     const PAGE_SIZE: u64 = 4096;
     Some(resident_pages * PAGE_SIZE / (1024 * 1024))
 }
@@ -172,7 +132,6 @@ mod tests {
         assert_eq!(percentile(&one, 50), 42);
         assert_eq!(percentile(&one, 95), 42);
 
-        // 1..=100 sorted: p50 → 50th value, p95 → 95th value (nearest-rank).
         let hundred: Vec<u32> = (1..=100).collect();
         assert_eq!(percentile(&hundred, 50), 50);
         assert_eq!(percentile(&hundred, 95), 95);
@@ -207,7 +166,6 @@ mod tests {
         m.record_cache_hit();
         m.record_cache_miss();
 
-        // A report snapshots and zeroes; a second report sees a clean window.
         m.report();
         use std::sync::atomic::Ordering::Relaxed;
         assert_eq!(m.riot_api_calls.load(Relaxed), 0);

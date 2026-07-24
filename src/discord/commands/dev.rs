@@ -39,7 +39,6 @@ impl TestQueueType {
     }
 }
 
-/// [DEV] Send a test alert image
 #[poise::command(slash_command, guild_only, owners_only, rename = "dev_test_alert")]
 pub async fn dev_test_alert(
     ctx: Context<'_>,
@@ -53,7 +52,6 @@ pub async fn dev_test_alert(
     let remake = remake.unwrap_or(false);
     let queue_id = queue_type.queue_id();
 
-    // Fake player data
     let player = Player {
         id: 0,
         puuid: "test-puuid-12345".to_string(),
@@ -69,12 +67,8 @@ pub async fn dev_test_alert(
         last_rank_flex_lp: Some(75),
     };
 
-    // ARAM has no lanes, so blank the positions to exercise the "no matchup /
-    // no role chip" variant; every other queue keeps its lane assignments.
     let pos = |p: &str| if queue_id == 450 { "" } else { p }.to_string();
 
-    // Fake tracked participant (blue-side mid). Carries the full Phase 3 data set
-    // so the dev card shows spells, runes, multi-kills, vision breakdown, etc.
     let participant = ParticipantDto {
         puuid: "test-puuid-12345".to_string(),
         team_position: pos("MIDDLE"),
@@ -88,7 +82,6 @@ pub async fn dev_test_alert(
         vision_score: 42,
         gold_earned: 12450,
         win,
-        // Example items: Luden's, Sorc Shoes, Shadowflame, Rabadon, Void Staff, Zhonya, ward
         item0: 6655,
         item1: 3020,
         item2: 4645,
@@ -100,16 +93,14 @@ pub async fn dev_test_alert(
         champ_level: 16,
         double_kills: 2,
         triple_kills: 1,
-        summoner1_id: 4,  // Flash
-        summoner2_id: 14, // Ignite
+        summoner1_id: 4,
+        summoner2_id: 14,
         perks: PerksDto {
             styles: vec![
-                // Domination / Electrocute keystone.
                 PerkStyleDto {
                     style: 8100,
                     selections: vec![PerkSelectionDto { perk: 8112 }],
                 },
-                // Sorcery secondary tree.
                 PerkStyleDto {
                     style: 8200,
                     selections: vec![],
@@ -122,8 +113,6 @@ pub async fn dev_test_alert(
         ..Default::default()
     };
 
-    // Nine more players to make a full 5v5, so KP, damage share, the lane matchup
-    // and the team/objectives panel all light up from "real" data.
     let opp_win = !win;
     let participants = vec![
         participant.clone(),
@@ -246,7 +235,6 @@ pub async fn dev_test_alert(
         ),
     ];
 
-    // Fake match info
     let match_info = InfoDto {
         game_duration: if remake { 180 } else { 1847 },
         game_version: "14.24.632.8043".to_string(),
@@ -265,7 +253,6 @@ pub async fn dev_test_alert(
         ],
     };
 
-    // Old/new rank for ranked games
     let (old_rank, new_rank) = if match_info.is_solo_queue() {
         let old = RankInfo {
             tier: "GOLD".to_string(),
@@ -308,8 +295,6 @@ pub async fn dev_test_alert(
         (None, None)
     };
 
-    // Showcase the Phase 4 footer blocks: a recent-form streak bar on ranked
-    // cards, champion mastery on everything else.
     let is_ranked = match_info.is_ranked();
     let streak = if is_ranked {
         vec![true, false, true, true, win]
@@ -344,8 +329,6 @@ pub async fn dev_test_alert(
     Ok(())
 }
 
-/// Compact builder for a filler roster participant (only the fields the card
-/// reads for team/matchup derivations are meaningful; the rest default to zero).
 #[allow(clippy::too_many_arguments)]
 fn demo_participant(
     puuid: &str,

@@ -59,15 +59,11 @@ pub struct RankInfo {
     pub tier: String,
     pub rank: String,
     pub lp: i32,
-    /// Ranked wins for the queue. `None` when reconstructed from the DB (which
-    /// only persists tier/rank/lp); populated on the freshly-fetched rank.
     pub wins: Option<i32>,
     pub losses: Option<i32>,
 }
 
 impl RankInfo {
-    /// `EMERALD` + `IV` → `Emerald IV`. Shared by the card view-model and the
-    /// poller's text-embed fallback.
     pub fn display_tier(&self) -> String {
         let lower = self.tier.to_lowercase();
         let mut chars = lower.chars();
@@ -85,11 +81,6 @@ pub struct Guild {
     pub alert_channel_id: Option<i64>,
 }
 
-/// A tracked player paired with the wall-clock time (unix seconds) of their most
-/// recent known activity: the newest `match_results.created_at`, or — for a
-/// player with no recorded games yet — their own `players.created_at`. Never
-/// null, so the poller always has an age to derive an adaptive cadence from,
-/// with no extra Riot call.
 #[derive(Debug, Clone, FromRow)]
 pub struct TrackedPlayer {
     #[sqlx(flatten)]

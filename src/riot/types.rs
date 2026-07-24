@@ -1,9 +1,5 @@
 use serde::Deserialize;
 
-// ============================================================================
-// Account-v1
-// ============================================================================
-
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccountDto {
@@ -11,10 +7,6 @@ pub struct AccountDto {
     pub game_name: Option<String>,
     pub tag_line: Option<String>,
 }
-
-// ============================================================================
-// League-v4
-// ============================================================================
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -39,22 +31,12 @@ impl LeagueEntryDto {
     }
 }
 
-// ============================================================================
-// Champion-mastery-v4
-// ============================================================================
-
-/// A player's mastery on one champion. We only surface level + points; the
-/// endpoint exposes no games-played count (that stays omitted on the card).
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChampionMasteryDto {
     pub champion_level: i32,
     pub champion_points: i32,
 }
-
-// ============================================================================
-// Match-v5
-// ============================================================================
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -71,14 +53,10 @@ pub struct InfoDto {
     pub game_ended_in_early_surrender: bool,
     pub participants: Vec<ParticipantDto>,
     pub queue_id: i32,
-    /// Per-team summary (win + objective kill counts). Absent from very old
-    /// match payloads, so it defaults to empty and the objectives block is then
-    /// simply omitted.
     #[serde(default)]
     pub teams: Vec<TeamDto>,
 }
 
-/// One team's objective tally (match-v5 `teams[]`).
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TeamDto {
@@ -87,7 +65,6 @@ pub struct TeamDto {
     pub objectives: ObjectivesDto,
 }
 
-/// The `objectives` sub-object; we only surface the ones the card renders.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ObjectivesDto {
@@ -107,12 +84,10 @@ pub struct ObjectiveCountDto {
 }
 
 impl InfoDto {
-    /// Queue IDs we support: Normal (400, 430, 490), Ranked (420, 440), ARAM (450)
     pub fn is_supported(&self) -> bool {
         matches!(self.queue_id, 400 | 420 | 430 | 440 | 450 | 490)
     }
 
-    /// Extract short patch version (e.g., "14.24" from "14.24.632.8043")
     pub fn patch_version(&self) -> &str {
         self.game_version
             .match_indices('.')
@@ -151,7 +126,6 @@ impl InfoDto {
         self.queue_id == 440
     }
 
-    /// Team summary for `team_id` (100 / 200), if present in the payload.
     pub fn team(&self, team_id: i32) -> Option<&TeamDto> {
         self.teams.iter().find(|t| t.team_id == team_id)
     }
@@ -172,7 +146,6 @@ pub struct ParticipantDto {
     pub vision_score: i32,
     pub gold_earned: i64,
     pub win: bool,
-    // Items (6 slots + ward)
     pub item0: i32,
     pub item1: i32,
     pub item2: i32,
@@ -180,8 +153,6 @@ pub struct ParticipantDto {
     pub item4: i32,
     pub item5: i32,
     pub item6: i32,
-    // --- Phase 3 additions (all defaulted for resilience against partial payloads) ---
-    /// `100` or `200`; used to group allies/enemies reliably.
     #[serde(default)]
     pub team_id: i32,
     #[serde(default)]
@@ -194,7 +165,6 @@ pub struct ParticipantDto {
     pub quadra_kills: i32,
     #[serde(default)]
     pub penta_kills: i32,
-    /// Summoner-spell numeric keys (e.g. `4` = Flash); mapped to DDragon ids.
     #[serde(default)]
     pub summoner1_id: i32,
     #[serde(default)]
@@ -209,8 +179,6 @@ pub struct ParticipantDto {
     pub detector_wards_placed: i32,
 }
 
-/// Minimal slice of match-v5 `perks` — just enough to resolve the keystone and
-/// the secondary rune style for the loadout strip.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct PerksDto {
     #[serde(default)]
@@ -220,7 +188,6 @@ pub struct PerksDto {
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PerkStyleDto {
-    /// Rune style id (e.g. `8000` = Precision).
     #[serde(default)]
     pub style: i32,
     #[serde(default)]
@@ -229,7 +196,6 @@ pub struct PerkStyleDto {
 
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct PerkSelectionDto {
-    /// Individual rune id (the first selection of the primary style is the keystone).
     #[serde(default)]
     pub perk: i32,
 }
@@ -266,14 +232,12 @@ impl ParticipantDto {
         }
     }
 
-    /// Returns all item IDs (0 = empty slot)
     pub fn items(&self) -> [i32; 7] {
         [
             self.item0, self.item1, self.item2, self.item3, self.item4, self.item5, self.item6,
         ]
     }
 
-    /// `wardsPlaced·wardsKilled·detectorWardsPlaced`, e.g. `12·7·4`.
     pub fn vision_breakdown(&self) -> String {
         format!(
             "{}·{}·{}",
@@ -281,7 +245,6 @@ impl ParticipantDto {
         )
     }
 
-    /// The keystone rune id (first selection of the primary style), if any.
     pub fn keystone_perk_id(&self) -> Option<i32> {
         self.perks
             .styles
@@ -292,13 +255,10 @@ impl ParticipantDto {
             .filter(|&p| p > 0)
     }
 
-    /// The secondary rune style id, if any.
     pub fn secondary_style_id(&self) -> Option<i32> {
         self.perks.styles.get(1).map(|s| s.style).filter(|&s| s > 0)
     }
 
-    /// Highest-tier multi-kill headline + an optional "doubles" sub-count, e.g.
-    /// `("1 Triple", Some("+2 double"))`. `None` when no multi-kill was scored.
     pub fn multi_kill(&self) -> Option<(String, Option<String>)> {
         let (count, name) = [
             (self.penta_kills, "Penta"),
@@ -331,7 +291,6 @@ mod tests {
             Some(("1 Triple".to_string(), Some("+2 double".to_string())))
         );
 
-        // A penta outranks everything; doubles still show as the sub.
         let p = ParticipantDto {
             penta_kills: 1,
             triple_kills: 3,
@@ -343,14 +302,12 @@ mod tests {
             Some(("1 Penta".to_string(), Some("+1 double".to_string())))
         );
 
-        // Doubles only → no sub.
         let p = ParticipantDto {
             double_kills: 2,
             ..Default::default()
         };
         assert_eq!(p.multi_kill(), Some(("2 Double".to_string(), None)));
 
-        // No multi-kills at all.
         assert_eq!(ParticipantDto::default().multi_kill(), None);
     }
 
@@ -385,7 +342,6 @@ mod tests {
         assert_eq!(p.keystone_perk_id(), Some(8010));
         assert_eq!(p.secondary_style_id(), Some(8100));
 
-        // Empty perks resolve to nothing (icons omitted).
         let empty = ParticipantDto::default();
         assert_eq!(empty.keystone_perk_id(), None);
         assert_eq!(empty.secondary_style_id(), None);

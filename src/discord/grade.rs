@@ -1,39 +1,5 @@
-//! Phase 4 of the HTML scorecard roadmap: the performance **grade** (S+/S/…/D).
-//!
-//! Riot exposes no "grade" field, so this is a self-contained scoring formula —
-//! the roadmap flags it explicitly as a *product decision* (§4). It is a pure
-//! function of stats we already derive, so it needs no API call, no DB and no
-//! Chromium, and is unit-tested in isolation like the rest of the builder.
-//!
-//! ## Design
-//!
-//! The grade is a **role-relative** composite. Five components, each already
-//! computed for the card, are scored against a per-role baseline (the value a
-//! solid game hits) and blended with per-role weights:
-//!
-//! | Component      | Why role-relative                                    |
-//! |----------------|------------------------------------------------------|
-//! | KDA ratio      | universal, but supports live on a lower absolute KDA |
-//! | Kill particip. | junglers/supports are expected to roam and assist    |
-//! | CS / min       | supports barely farm; ADCs/mids should               |
-//! | Damage share   | carries deal most of it, supports/tanks less         |
-//! | Vision / min   | supports/junglers ward far more                      |
-//!
-//! Each component yields `actual / baseline`, clamped to [`OVERPERFORM_CEIL`] so
-//! one monstrous stat can't alone buy an S+. The weighted blend (weights sum to
-//! `1.0`) is then bucketed. A baseline-meeting game blends to ~`1.0` → low S;
-//! beating baselines across the board reaches S+, and falling short drops to A/B
-//! and below.
-//!
-//! **Objectives are deliberately excluded.** match-v5 gives no per-player
-//! objective *participation*, only whole-team tallies (already shown in the team
-//! panel), so folding them into an individual grade would credit a player for
-//! their team's Barons. Kill participation already captures teamplay.
-
-/// Performance bucket shown in the sidebar diamond.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Grade {
-    // Ordered worst→best so derived `Ord` matches intuition (`D < … < SPlus`).
     D,
     C,
     B,
@@ -43,7 +9,6 @@ pub enum Grade {
 }
 
 impl Grade {
-    /// The badge text (`S+`, `S`, `A`, …).
     pub fn label(self) -> &'static str {
         match self {
             Grade::SPlus => "S+",
@@ -56,17 +21,13 @@ impl Grade {
     }
 }
 
-/// Ceiling on a single component's `actual / baseline` ratio. Caps how much one
-/// dominant stat can lift the blend, so an S+ needs all-round excellence.
 const OVERPERFORM_CEIL: f64 = 1.2;
 
-/// Per-role baselines (a solid game's value) plus the blend weights. `weights`
-/// sum to `1.0`, so a game that exactly meets every baseline scores `1.0`.
 struct RoleProfile {
     kda: f64,
-    kp: f64, // percent (0..100)
+    kp: f64,
     cs_per_min: f64,
-    damage_share: f64, // percent (0..100)
+    damage_share: f64,
     vision_per_min: f64,
     weights: Weights,
 }
@@ -79,8 +40,6 @@ struct Weights {
     vision: f64,
 }
 
-/// Baseline + weighting for a `team_position`. Empty position (ARAM / unknown)
-/// falls through to a generic carry-ish profile.
 fn profile(role: &str) -> RoleProfile {
     match role {
         "TOP" => RoleProfile {
@@ -153,7 +112,6 @@ fn profile(role: &str) -> RoleProfile {
                 vision: 0.25,
             },
         },
-        // ARAM / unknown: no lanes, so lean on fighting stats over farm/vision.
         _ => RoleProfile {
             kda: 4.0,
             kp: 60.0,
@@ -171,8 +129,6 @@ fn profile(role: &str) -> RoleProfile {
     }
 }
 
-/// Already-derived stats fed into the grade. All are role-agnostic here; the
-/// role selects the baseline they're measured against.
 pub struct GradeInput<'a> {
     pub role: &'a str,
     pub kda: f64,
@@ -182,11 +138,9 @@ pub struct GradeInput<'a> {
     pub vision_per_min: f64,
 }
 
-/// Score a performance into a [`Grade`].
 pub fn evaluate(input: &GradeInput<'_>) -> Grade {
     let p = profile(input.role);
 
-    // Ratio to baseline, floored at 0 and capped so one stat can't run away.
     let ratio = |actual: f64, baseline: f64| {
         if baseline <= 0.0 {
             OVERPERFORM_CEIL
@@ -204,9 +158,6 @@ pub fn evaluate(input: &GradeInput<'_>) -> Grade {
     bucket(score)
 }
 
-/// Map a blended score (0..=[`OVERPERFORM_CEIL`]) to a bucket. Thresholds are
-/// tuned so meeting baselines lands ~S, all-round overperformance reaches S+,
-/// and shortfalls fall away through A/B/C to D.
 fn bucket(score: f64) -> Grade {
     if score >= 1.02 {
         Grade::SPlus
@@ -227,8 +178,6 @@ fn bucket(score: f64) -> Grade {
 mod tests {
     use super::*;
 
-    /// A hard-carry jungle game (the design's S+ sample: 16/1/4, high KP, huge
-    /// farm and damage) must reach the top bucket.
     #[test]
     fn dominant_game_is_s_plus() {
         let g = evaluate(&GradeInput {
@@ -242,7 +191,6 @@ mod tests {
         assert_eq!(g, Grade::SPlus, "expected S+, got {}", g.label());
     }
 
-    /// A thoroughly bad game floors out at D.
     #[test]
     fn feeding_game_is_d() {
         let g = evaluate(&GradeInput {
@@ -256,7 +204,6 @@ mod tests {
         assert_eq!(g, Grade::D, "expected D, got {}", g.label());
     }
 
-    /// Meeting every baseline exactly blends to ~1.0 → a clean S.
     #[test]
     fn baseline_game_is_s() {
         let g = evaluate(&GradeInput {
@@ -270,8 +217,6 @@ mod tests {
         assert_eq!(g, Grade::S);
     }
 
-    /// The grade is role-relative: a support with almost no CS and low damage is
-    /// judged kindly, while the *same* stat line as an ADC is a poor game.
     #[test]
     fn role_relative_scoring() {
         let support = evaluate(&GradeInput {
@@ -298,7 +243,6 @@ mod tests {
         );
     }
 
-    /// Grades are monotonic in overall performance.
     #[test]
     fn better_stats_never_lower_the_grade() {
         let ok = evaluate(&GradeInput {
@@ -321,7 +265,6 @@ mod tests {
         assert!(great >= Grade::S);
     }
 
-    /// Empty position (ARAM) grades on the generic profile without panicking.
     #[test]
     fn aram_uses_generic_profile() {
         let g = evaluate(&GradeInput {

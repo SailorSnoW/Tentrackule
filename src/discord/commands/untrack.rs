@@ -4,7 +4,6 @@ use tracing::{info, instrument};
 use crate::discord::bot::Context;
 use crate::error::AppError;
 
-/// Stop tracking a League of Legends player
 #[poise::command(slash_command, guild_only)]
 #[instrument(
     skip(ctx),
@@ -24,7 +23,6 @@ pub async fn untrack(
         .ok_or(AppError::Config("Must be used in a guild".into()))?;
     tracing::Span::current().record("guild_id", guild_id.get());
 
-    // Find player in database
     let player = ctx
         .data()
         .db
@@ -35,7 +33,6 @@ pub async fn untrack(
             tag_line: tag_line.clone(),
         })?;
 
-    // Remove from guild
     let removed = ctx
         .data()
         .db

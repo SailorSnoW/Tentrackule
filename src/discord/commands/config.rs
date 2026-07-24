@@ -4,7 +4,6 @@ use tracing::{info, instrument};
 use crate::discord::bot::Context;
 use crate::error::AppError;
 
-/// Configure the bot for this server
 #[poise::command(
     slash_command,
     guild_only,
@@ -12,11 +11,9 @@ use crate::error::AppError;
     subcommands("channel")
 )]
 pub async fn config(_ctx: Context<'_>) -> Result<(), AppError> {
-    // Parent command, subcommands handle the actual work
     Ok(())
 }
 
-/// Set the channel for game alerts
 #[poise::command(slash_command, guild_only, required_permissions = "MANAGE_GUILD")]
 #[instrument(
     skip(ctx),

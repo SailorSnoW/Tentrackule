@@ -5,7 +5,6 @@ use poise::ChoiceParameter;
 
 use crate::error::AppError;
 
-/// Platform routing values for Riot API (Summoner-v4, League-v4)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, ChoiceParameter)]
 pub enum Platform {
     #[name = "BR - Brazil"]
@@ -136,7 +135,6 @@ impl fmt::Display for Platform {
     }
 }
 
-/// Regional routing values for Riot API (Account-v1, Match-v5)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Region {
     Americas,

@@ -4,8 +4,6 @@ use crate::riot::region::Platform;
 use crate::riot::types::LeagueEntryDto;
 
 impl RiotClient {
-    /// Get league entries (ranked info) for a player by PUUID
-    /// Uses platform routing (euw1, na1, kr, etc.)
     pub async fn get_league_entries_by_puuid(
         &self,
         platform: Platform,

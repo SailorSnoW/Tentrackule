@@ -3,7 +3,6 @@ use poise::serenity_prelude as serenity;
 use crate::discord::bot::Context;
 use crate::error::AppError;
 
-/// List all tracked players in this server
 #[poise::command(slash_command, guild_only)]
 pub async fn list(ctx: Context<'_>) -> Result<(), AppError> {
     let guild_id = ctx

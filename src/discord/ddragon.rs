@@ -1,39 +1,15 @@
-//! Data Dragon lookup tables + patch-version resolution.
-//!
-//! The match card needs to turn Riot's *numeric* summoner-spell keys and rune
-//! ids into DDragon asset paths (e.g. `4` → `SummonerFlash`, keystone `8010` →
-//! `perk-images/Styles/.../Conqueror.png`). Those mappings only live in DDragon's
-//! `summoner.json` / `runesReforged.json`, so we fetch and index them for the
-//! live patch (see [`resolve_version`]) and keep them in memory, hot-swapped on a
-//! periodic refresh so a champion released mid-run stops 404-ing (Phase 5.2).
-//!
-//! Fetching is best-effort: on any failure we log and fall back to empty tables,
-//! which just omits the spell/rune icons (an unmet `sc-if`) rather than breaking
-//! the whole card.
-
 use std::collections::HashMap;
 
 use reqwest::Client;
 use serde::Deserialize;
 use tracing::{info, warn};
 
-/// Data Dragon CDN root (no trailing slash).
 pub const DDRAGON_CDN: &str = "https://ddragon.leagueoflegends.com/cdn";
 
-/// Newest-first JSON array of every published patch version.
 const VERSIONS_URL: &str = "https://ddragon.leagueoflegends.com/api/versions.json";
 
-/// Last-resort patch when auto-resolution fails at boot and no `DDRAGON_VERSION`
-/// override is set. Only reached if Riot's `versions.json` is unreachable during
-/// start-up — the steady-state path resolves the live patch (see
-/// [`resolve_version`]).
 pub const DEFAULT_DDRAGON_VERSION: &str = "16.1.1";
 
-/// Resolve the Data Dragon patch to load (Phase 5.1). Zero-maintenance by
-/// default: fetch the live patch from `versions.json`. An explicit
-/// `DDRAGON_VERSION` (`override_version`) forces that patch and skips the lookup
-/// — an emergency lever for pinning when a fresh patch breaks assets. If the
-/// lookup fails and nothing is pinned, fall back to [`DEFAULT_DDRAGON_VERSION`].
 pub async fn resolve_version(http: &Client, override_version: Option<&str>) -> String {
     if let Some(version) = override_version {
         info!(version, "🖼️ Using pinned DDRAGON_VERSION override");
@@ -54,9 +30,6 @@ pub async fn resolve_version(http: &Client, override_version: Option<&str>) -> S
     }
 }
 
-/// The newest published patch (the first entry of `versions.json`), or `None` on
-/// any network/parse failure or an empty list — so callers keep serving the
-/// patch they already have instead of downgrading on a transient blip.
 pub async fn fetch_latest_version(http: &Client) -> Option<String> {
     match fetch_versions(http).await {
         Ok(versions) => {
@@ -82,24 +55,16 @@ async fn fetch_versions(http: &Client) -> Result<Vec<String>, reqwest::Error> {
         .await
 }
 
-/// In-memory Data Dragon lookup tables + the CDN version they were built for.
 #[derive(Debug, Clone, Default)]
 pub struct DdragonData {
     version: String,
-    /// Summoner-spell numeric key → DDragon id (e.g. `4` → `SummonerFlash`).
     spells: HashMap<i32, String>,
-    /// Rune id → icon path (e.g. `8010` → `perk-images/Styles/.../Conqueror.png`).
     rune_icons: HashMap<i32, String>,
-    /// Rune *style* id → icon path (e.g. `8000` → `perk-images/Styles/7201_Precision.png`).
     style_icons: HashMap<i32, String>,
-    /// Champion DDragon key → numeric championId (e.g. `Ahri` → `103`), for the
-    /// champion-mastery-v4 lookup.
     champion_ids: HashMap<String, i64>,
 }
 
 impl DdragonData {
-    /// Fetch and index `summoner.json` + `runesReforged.json` for `version`.
-    /// Never fails: missing tables just disable the corresponding icons.
     pub async fn load(http: &Client, version: &str) -> Self {
         let spells = match fetch_spells(http, version).await {
             Ok(map) => map,
@@ -142,46 +107,31 @@ impl DdragonData {
         }
     }
 
-    /// The CDN version these tables were built for (also used for versioned URLs).
     pub fn version(&self) -> &str {
         &self.version
     }
 
-    /// Versioned summoner-spell icon URL for a numeric key (`4` → Flash), if known.
     pub fn spell_src(&self, key: i32) -> Option<String> {
         let id = self.spells.get(&key)?;
         Some(format!("{DDRAGON_CDN}/{}/img/spell/{id}.png", self.version))
     }
 
-    /// Versionless keystone icon URL for a rune id, if known.
     pub fn keystone_src(&self, perk_id: i32) -> Option<String> {
         let icon = self.rune_icons.get(&perk_id)?;
         Some(format!("{DDRAGON_CDN}/img/{icon}"))
     }
 
-    /// Versionless secondary-tree icon URL for a rune style id, if known.
     pub fn secondary_src(&self, style_id: i32) -> Option<String> {
         let icon = self.style_icons.get(&style_id)?;
         Some(format!("{DDRAGON_CDN}/img/{icon}"))
     }
 
-    /// Numeric championId for a DDragon champion key (`Ahri` → `103`), if known.
-    /// Used to query champion-mastery-v4. Resolved through [`Self::champion_key`]
-    /// so match-v5 casing quirks (e.g. `FiddleSticks`) still find their id.
     pub fn champion_id(&self, champion_name: &str) -> Option<i64> {
         self.champion_ids
             .get(&self.champion_key(champion_name))
             .copied()
     }
 
-    /// Canonical Data Dragon champion key for a match-v5 `championName`.
-    ///
-    /// match-v5 almost always returns the exact DDragon key, but some diverge —
-    /// famously `FiddleSticks`, where Data Dragon uses `Fiddlesticks`
-    /// (dev-relations #580) — which 404s every splash / square / mastery lookup
-    /// built from the raw name. We reconcile case-insensitively against the loaded
-    /// champion index, falling back to the input untouched when the index is empty
-    /// (best-effort load failed) or the champion is genuinely unknown.
     pub fn champion_key(&self, champion_name: &str) -> String {
         if self.champion_ids.contains_key(champion_name) {
             return champion_name.to_string();
@@ -194,10 +144,6 @@ impl DdragonData {
     }
 }
 
-// ============================================================================
-// summoner.json
-// ============================================================================
-
 #[derive(Deserialize)]
 struct SummonerFile {
     data: HashMap<String, SummonerSpell>,
@@ -205,9 +151,7 @@ struct SummonerFile {
 
 #[derive(Deserialize)]
 struct SummonerSpell {
-    /// Numeric key as a string (e.g. `"4"`).
     key: String,
-    /// DDragon id (e.g. `"SummonerFlash"`).
     id: String,
 }
 
@@ -229,10 +173,6 @@ async fn fetch_spells(
         .filter_map(|s| s.key.parse::<i32>().ok().map(|k| (k, s.id)))
         .collect())
 }
-
-// ============================================================================
-// runesReforged.json
-// ============================================================================
 
 #[derive(Deserialize)]
 struct RuneStyle {
@@ -279,10 +219,6 @@ async fn fetch_runes(http: &Client, version: &str) -> Result<RuneMaps, reqwest::
     Ok((rune_icons, style_icons))
 }
 
-// ============================================================================
-// champion.json
-// ============================================================================
-
 #[derive(Deserialize)]
 struct ChampionFile {
     data: HashMap<String, ChampionEntry>,
@@ -290,9 +226,7 @@ struct ChampionFile {
 
 #[derive(Deserialize)]
 struct ChampionEntry {
-    /// DDragon key (e.g. `"Ahri"`) — matches `participant.championName`.
     id: String,
-    /// Numeric championId as a string (e.g. `"103"`).
     key: String,
 }
 
@@ -317,7 +251,6 @@ async fn fetch_champions(
 
 #[cfg(test)]
 impl DdragonData {
-    /// Build a fixed table for tests (no network).
     pub fn stub(version: &str) -> Self {
         Self {
             version: version.to_string(),
@@ -365,7 +298,6 @@ mod tests {
                 "https://ddragon.leagueoflegends.com/cdn/img/perk-images/Styles/7201_Precision.png"
             )
         );
-        // Unknown ids resolve to nothing (icon simply omitted).
         assert_eq!(d.spell_src(999), None);
         assert_eq!(d.keystone_src(1), None);
     }
@@ -375,46 +307,33 @@ mod tests {
         let d = DdragonData::stub("14.24.1");
         assert_eq!(d.champion_id("Ahri"), Some(103));
         assert_eq!(d.champion_id("Viego"), Some(234));
-        // Unknown champion → no id (mastery lookup simply skipped).
         assert_eq!(d.champion_id("Unknown"), None);
     }
 
     #[test]
     fn champion_key_reconciles_matchv5_casing() {
         let d = DdragonData::stub("14.24.1");
-        // The notorious case: match-v5 sends "FiddleSticks", DDragon key is
-        // "Fiddlesticks" (dev-relations #580). The splash/square/mastery lookups
-        // must land on the canonical key, not 404 on the raw name.
         assert_eq!(d.champion_key("FiddleSticks"), "Fiddlesticks");
         assert_eq!(d.champion_id("FiddleSticks"), Some(9));
-        // Exact keys pass straight through; unknowns fall back untouched.
         assert_eq!(d.champion_key("Ahri"), "Ahri");
         assert_eq!(d.champion_key("Unknown"), "Unknown");
     }
 
-    /// An explicit override short-circuits resolution: it's returned verbatim and
-    /// no network call is made (so this test needs none).
     #[tokio::test]
     async fn resolve_version_prefers_explicit_override() {
         let http = Client::new();
         assert_eq!(resolve_version(&http, Some("99.9.9")).await, "99.9.9");
     }
 
-    /// Opt-in (network) check that live resolution returns a plausible patch
-    /// string. Run with:
-    ///   cargo test --quiet resolves_live_version -- --ignored
     #[tokio::test]
     #[ignore = "hits the network (Data Dragon versions.json)"]
     async fn resolves_live_version() {
         let http = Client::new();
         let version = fetch_latest_version(&http).await.expect("a live patch");
-        // A DDragon patch looks like `16.1.1` — at least two dot-separated
-        // numeric-ish components.
         assert!(
             version.split('.').count() >= 2,
             "unexpected version shape: {version}"
         );
-        // With no override, resolution yields exactly that live patch.
         assert_eq!(resolve_version(&http, None).await, version);
     }
 }

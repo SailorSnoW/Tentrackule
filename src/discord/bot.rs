@@ -9,7 +9,6 @@ use crate::riot::RiotClient;
 use super::commands;
 use super::image_gen::ImageGenerator;
 
-/// Shared data accessible in all commands
 pub struct Data {
     pub db: Repository,
     pub riot: RiotClient,

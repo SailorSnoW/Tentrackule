@@ -5,7 +5,6 @@ use crate::discord::bot::Context;
 use crate::error::AppError;
 use crate::riot::Platform;
 
-/// Track a League of Legends player
 #[poise::command(slash_command, guild_only)]
 #[instrument(
     skip(ctx),
@@ -32,10 +31,8 @@ pub async fn track(
     let platform = region;
     let riot_region = platform.to_region();
 
-    // Defer response since API calls might take a moment
     ctx.defer().await?;
 
-    // Get account from Riot API
     let account = ctx
         .data()
         .riot
@@ -46,14 +43,12 @@ pub async fn track(
     let actual_game_name = account.game_name.as_deref().unwrap_or(&game_name);
     let actual_tag_line = account.tag_line.as_deref().unwrap_or(&tag_line);
 
-    // Save to database
     let player = ctx
         .data()
         .db
         .get_or_create_player(puuid, actual_game_name, actual_tag_line, platform.as_str())
         .await?;
 
-    // If player has no last_match_id, fetch and store it to avoid alerting on old games
     if player.last_match_id.is_none() {
         match ctx.data().riot.get_match_ids(riot_region, puuid, 1).await {
             Ok(match_ids) => {
@@ -66,13 +61,11 @@ pub async fn track(
                 }
             }
             Err(e) => {
-                // Non-fatal: player might not have any matches yet
                 warn!(error = %e, "Could not fetch last match ID for new player");
             }
         }
     }
 
-    // Check if already tracked in this guild
     if ctx
         .data()
         .db
@@ -87,13 +80,11 @@ pub async fn track(
         return Ok(());
     }
 
-    // Link player to guild
     ctx.data()
         .db
         .add_player_to_guild(guild_id.get(), player.id, user_id.get())
         .await?;
 
-    // Build response embed
     let embed = serenity::CreateEmbed::new()
         .title("Player Tracked")
         .description(format!(

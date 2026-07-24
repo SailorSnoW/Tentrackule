@@ -4,9 +4,6 @@ use crate::riot::region::Platform;
 use crate::riot::types::ChampionMasteryDto;
 
 impl RiotClient {
-    /// Champion mastery for one champion (by numeric championId).
-    /// Uses platform routing (euw1, na1, kr, …). Returns 404 when the player has
-    /// never played the champion — callers treat that as "no mastery".
     pub async fn get_champion_mastery(
         &self,
         platform: Platform,
