@@ -2,6 +2,8 @@
 
 > Statut : **implémenté (Phases 1–5)** · Le template SVG (`resvg`) est **retiré** ; les cartes sont désormais construites en **HTML moderne** (Rust) puis rendues par un **Chromium headless** (Browserless) hébergé à part. Reste opérationnel : le **déploiement Fly du renderer** (manuel, cf. [`renderer-deploy.md`](renderer-deploy.md)).
 > Dernière mise à jour : 2026-07-23.
+>
+> **Mise à jour du 2026-11-05 :** le renderer a migré de Browserless sur Fly vers **Cloudflare Browser Run**, pour réduire son coût. Le builder HTML reste celui décrit ici ; toute mention ci-dessous de Browserless, de `fly.renderer.toml` ou de Google Fonts pour le CJK est **historique**. Procédure actuelle : [`renderer-deploy.md`](renderer-deploy.md).
 
 ---
 

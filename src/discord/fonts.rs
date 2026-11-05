@@ -3,7 +3,7 @@ use reqwest::Client;
 
 use crate::error::AppError;
 
-const LATIN_FONT_CSS_URL: &str = "https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap";
+pub(super) const LATIN_FONT_CSS_URL: &str = "https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap";
 const FONT_FETCH_UA: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const INLINED_SUBSETS: &[&str] = &["latin", "latin-ext"];
 

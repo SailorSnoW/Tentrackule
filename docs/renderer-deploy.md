@@ -1,82 +1,105 @@
-# Renderer deployment (Phase 2)
+# Renderer setup (Cloudflare Browser Run)
 
-The match card is HTML rendered to PNG by a **separate** headless-Chromium
-service ([Browserless](https://www.browserless.io/)), so the bot VM stays lean at
-256 MB. This is the app defined in [`fly.renderer.toml`](../fly.renderer.toml).
+The match card is HTML rendered to JPEG by
+[Cloudflare Browser Run](https://developers.cloudflare.com/browser-run/) (formerly
+Browser Rendering), so the bot VM stays lean at 256 MB and there is no renderer
+to host.
 
 ```
- tentrackule (bot, 256 MB)  ──POST /screenshot { html }──▶  tentrackule-renderer
-   build_html(ctx)                                          Browserless / Chromium
-   render_html_to_png()  ◀──────────── PNG bytes ────────   1 GB VM, scale-to-zero
-                    (private Fly network, never exposed publicly)
+ tentrackule (bot, 256 MB)  ──POST /screenshot { html }──▶  Cloudflare Browser Run
+   build_html(ctx)            Authorization: Bearer …       managed headless Chromium
+   Renderer::render()  ◀──────────── JPEG bytes ─────────   billed per browser second
 ```
 
-## 1. Deploy the renderer
+## 1. Create the API token
+
+1. Note your **account ID** (Cloudflare dashboard, account home).
+2. Create a custom API token with only the **`Browser Run - Edit`** permission.
+
+Workers Free is enough to start; see [Limits](#limits-and-failure-modes).
+
+## 2. Check it from your machine
+
+Add both values to `.env` (git-ignored):
 
 ```sh
-# One-off: create the app (no public IP is allocated — keep it private).
-fly apps create tentrackule-renderer
-
-# Auth token shared with the bot. Generate a strong random value.
-fly secrets set -a tentrackule-renderer TOKEN="$(openssl rand -hex 32)"
-
-# Deploy the Browserless image and allocate a Flycast (private) address.
-fly deploy -c fly.renderer.toml --flycast
+CLOUDFLARE_ACCOUNT_ID=<id>
+CLOUDFLARE_API_TOKEN=<token>
 ```
 
-`--flycast` gives the app a **private** IP served through the Fly proxy. We reach
-it at `tentrackule-renderer.flycast:3000`.
-
-> **Why Flycast and not `.internal`?** Scale-to-zero autostart is driven by the
-> Fly proxy. `.flycast` routes through the proxy (so the first request wakes the
-> suspended machine); `.internal` connects straight to the instance, bypasses the
-> proxy, and would never autostart a stopped machine. This is the one deviation
-> from the roadmap's `…​.internal:3000`.
-
-## 2. Verify it's reachable (from the bot machine)
+Then render real cards through the real code path:
 
 ```sh
-fly ssh console -a tentrackule            # shell into the bot
-curl -s -o /tmp/out.png -w '%{http_code}\n' \
-  -X POST "http://tentrackule-renderer.flycast:3000/screenshot?token=$RENDERER_TOKEN" \
-  -H 'content-type: application/json' -H 'accept: image/png' \
-  -d '{"html":"<div id=card-root>hi</div>","selector":"#card-root","options":{"type":"png"}}'
-# → 200, and /tmp/out.png is a valid PNG. First call may take ~1–3 s (cold start).
+cargo test renders_real_cards_on_cloudflare -- --ignored --nocapture
 ```
+
+The test covers Latin, Latin Extended, kana, hangul, Han and Cyrillic names plus the
+Google Fonts `<link>` fallback. Review the JPEGs in `target/scorecard-samples/`. On
+Workers Free, expect pauses of up to about 10 s between cards: that is the rate limit
+being honoured.
 
 ## 3. Point the bot at it
 
+Set the secrets **before** deploying, because a push to `master` deploys automatically:
+
 ```sh
-# Same value as the renderer's TOKEN secret.
-fly secrets set -a tentrackule RENDERER_TOKEN="<the token from step 1>"
-# RENDERER_URL is already set in fly.toml [env]; redeploy to pick up the secret.
-fly deploy
+fly secrets set -a tentrackule \
+  CLOUDFLARE_ACCOUNT_ID=<id> \
+  CLOUDFLARE_API_TOKEN=<token>
 ```
 
-If `RENDERER_URL` / `RENDERER_TOKEN` are unset (e.g. local dev), the bot logs a
-warning at startup and posts a **text embed** for each match instead of a card —
-match announcements are never blocked by the renderer being down or absent.
+At startup the bot logs `renderer=true`. If either value is missing it logs a warning
+and posts a **text embed** for each match instead of a card.
+
+## Limits and failure modes
+
+| | Workers Free | Workers Paid ($5/month minimum) |
+|---|---|---|
+| Browser time | 10 minutes/day, resets at 00:00 UTC | 10 hours/month, then $0.09/hour |
+| Requests | 1 every 10 seconds | 30 per second |
+
+A card measured 325–1058 ms of billed browser time, so Workers Free covers about 560
+cards a day at the slowest measured time. The hourly `📊 hourly stats` log line
+reports `render_browser_ms` so you can follow consumption.
+
+| Response | Behaviour |
+|---|---|
+| `429` rate limit | Waits for `Retry-After` (10 s if absent), up to 30 s |
+| `429` daily quota, or a `Retry-After` above 30 s | No retry: text embed until the quota resets |
+| `422`, `5xx`, network error, non-image `200` | Retries after 5 s |
+| `400`, `401`, `403`, `413` | No retry: text embed. Check the token and the logs |
+
+A render gets at most 3 attempts. Whatever happens, the match is still announced.
 
 ## Notes
 
-- **Scale-to-zero, with a render retry as the safety net.** `min_machines_running
-  = 0` lets the single machine stop when idle — the renderer does only a few cards
-  a day, so an always-warm host is ~90% of the infra bill for almost no work. The
-  Fly proxy (`.flycast`) autostarts the stopped machine on the first request.
-  Chromium's first launch on a freshly-woken machine can overrun Browserless's
-  fixed 30 s launch timeout (WS endpoint never appears → that render fails); the
-  timeout is **not** configurable and the OSS image has no pre-boot, so the bot's
-  render path **retries once ~25 s later**, by which point Chrome is warm (1-6 s) —
-  see `render_with_retry` (Phase 3.A). A render that still fails degrades to a text
-  embed. Trade-off: ~free at rest instead of one VM 24/7. If cold starts prove too
-  flaky, revert to `min_machines_running = 1` + `fly scale count 1` (always-warm),
-  or move to Fly Machines API orchestration.
-- **VM sizing.** A **dedicated** CPU (`performance-1x`, 2 GB) is required: on a
-  shared vCPU, Chromium's cold launch overran the 30 s WS-endpoint timeout and
-  every render fell back to a text embed. `CONCURRENT = 2` stays well clear of
-  OOM at 2 GB; raise it only alongside VM memory.
-- **Fonts.** For Latin names the bot inlines the card's font faces as data URIs, so
-  the render needs no network and waits only on `load` + `document.fonts.ready`.
-  Names in CJK scripts (or any inlining failure) keep the Google Fonts `<link>`,
-  fetched at render time under `networkidle0`. Either way text never falls back
-  mid-shot.
+- **Fonts.** The bot inlines the Latin faces as data URIs, so the render needs no
+  network and waits only on `load`, then on the `html[data-fonts-ready]` marker set
+  after `document.fonts.ready`. CJK names use the browser's pre-installed Noto CJK.
+  If inlining fails, the HTML keeps a Google Fonts `<link>` and waits on
+  `networkidle0`, which costs at least 500 ms more browser time.
+- **Billing header.** Each response carries `X-Browser-Ms-Used`. Failed
+  `waitForTimeout` requests are not charged.
+- **Data.** The card HTML, including Riot IDs, is sent to Cloudflare. Cloudflare's
+  Quick Actions response cache does not apply to submitted HTML.
+- **Local development.** Leave the variables unset to get the text embed, or open
+  `target/scorecard-samples/*.html` (written by `cargo test`) in a browser.
+
+## Retiring the old Fly renderer
+
+Once cards are confirmed on Cloudflare, stop the old Browserless app and keep it for a
+few days as a rollback:
+
+```sh
+fly machine list -a tentrackule-renderer
+fly machine stop -a tentrackule-renderer <machine-id>
+```
+
+A stopped machine only bills its root filesystem. To finish:
+
+```sh
+fly apps destroy tentrackule-renderer
+fly secrets unset -a tentrackule RENDERER_TOKEN
+```
+
+To roll back before that, revert the migration commit and restart the machine.

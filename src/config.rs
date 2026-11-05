@@ -18,8 +18,8 @@ pub struct Config {
     pub riot_rate_limit_per_second: NonZeroU32,
     pub riot_rate_limit_per_two_min: NonZeroU32,
     pub ddragon_version_override: Option<String>,
-    pub renderer_url: Option<String>,
-    pub renderer_token: Option<String>,
+    pub cloudflare_account_id: Option<String>,
+    pub cloudflare_api_token: Option<String>,
 }
 
 impl Config {
@@ -54,8 +54,8 @@ impl Config {
 
         let ddragon_version_override = non_empty_env("DDRAGON_VERSION");
 
-        let renderer_url = non_empty_env("RENDERER_URL");
-        let renderer_token = non_empty_env("RENDERER_TOKEN");
+        let cloudflare_account_id = non_empty_env("CLOUDFLARE_ACCOUNT_ID");
+        let cloudflare_api_token = non_empty_env("CLOUDFLARE_API_TOKEN");
 
         Ok(Self {
             discord_token,
@@ -65,8 +65,8 @@ impl Config {
             riot_rate_limit_per_second,
             riot_rate_limit_per_two_min,
             ddragon_version_override,
-            renderer_url,
-            renderer_token,
+            cloudflare_account_id,
+            cloudflare_api_token,
         })
     }
 }

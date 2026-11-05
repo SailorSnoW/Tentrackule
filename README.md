@@ -10,30 +10,31 @@ champion-**mastery** block for unranked queues.
 
 ## How it works
 
-Rendering is split across two Fly.io apps so the bot itself stays lean (256 MB, no
+Rendering is delegated to Cloudflare so the bot itself stays lean (256 MB, no
 browser, no font stack):
 
 ```
-  tentrackule (bot, 256 MB)                     tentrackule-renderer (Browserless)
+  tentrackule (bot, 256 MB)                     Cloudflare Browser Run
   ┌──────────────────────────┐  POST /screenshot ┌──────────────────────────────┐
-  │ • poll Riot for new match │  { html }  ─────▶ │ Chromium headless            │
-  │ • build card HTML (Rust)  │                   │ • loads Google Fonts         │
-  │ • inline DDragon assets   │ ◀─────  PNG bytes │ • crops #card-root           │
-  │   as data URIs (cache)    │                   │ • scale-to-zero at rest      │
+  │ • poll Riot for new match │  { html }  ─────▶ │ Managed headless Chromium    │
+  │ • build card HTML (Rust)  │                   │ • pre-installed CJK fonts    │
+  │ • inline assets & fonts   │ ◀──── JPEG bytes  │ • crops #card-root           │
+  │   as data URIs (cache)    │                   │ • billed per browser second  │
   └──────────────────────────┘                   └──────────────────────────────┘
-            │ PNG ─▶ Discord attachment
+            │ JPEG ─▶ Discord attachment
 ```
 
 - **Card HTML** is assembled in Rust (`src/discord/scorecard.rs`) from a fully
   resolved view-model — no template engine, every dynamic field HTML-escaped.
 - **Assets** (splash, spells, runes, items, opponent icon) are fetched once through
-  a disk+memory cache (`ImageCache`) and inlined as `data:` URIs, so the render is
-  deterministic and offline.
-- **Rendering** POSTs the HTML to a self-hosted [Browserless](https://www.browserless.io/)
-  Chromium, which waits for `document.fonts.ready` and screenshots the `#card-root`
-  element at `deviceScaleFactor: 2`.
-- **Fallback:** if the renderer is unset or unreachable, the match is still announced
-  as a compact **text embed** — a render outage never blocks or stalls tracking.
+  a disk+memory cache (`ImageCache`) and inlined as `data:` URIs, like the Latin web
+  fonts, so the render needs no network. CJK names use the fonts pre-installed in the
+  browser.
+- **Rendering** POSTs the HTML to [Cloudflare Browser Run](https://developers.cloudflare.com/browser-run/),
+  which waits for `load` and `document.fonts.ready`, then screenshots the `#card-root`
+  element at `deviceScaleFactor: 2`. Rate limits honour `Retry-After`.
+- **Fallback:** if the renderer is unset, out of quota or unreachable, the match is
+  still announced as a compact **text embed**, so a render outage never blocks tracking.
 
 Data comes from Riot **match-v5**, **league-v4** and **champion-mastery-v4**, plus
 Data Dragon for asset/version lookups. The performance grade is computed locally
@@ -63,8 +64,8 @@ Set via environment (a `.env` file is loaded in dev — see `.env.example`):
 | `RIOT_RATE_LIMIT_PER_SECOND` | | `20` | Client-side rate limit (fast window) |
 | `RIOT_RATE_LIMIT_PER_TWO_MIN` | | `100` | Client-side rate limit (2-minute window) |
 | `DDRAGON_VERSION` | | *(auto)* | Data Dragon patch. Unset → resolved from `versions.json` at boot and refreshed every 24h; set to pin a patch |
-| `RENDERER_URL` | | *(unset)* | Browserless base URL; unset → text-embed fallback |
-| `RENDERER_TOKEN` | | *(unset)* | Renderer auth token (secret) |
+| `CLOUDFLARE_ACCOUNT_ID` | | *(unset)* | Cloudflare account running Browser Run; unset → text-embed fallback |
+| `CLOUDFLARE_API_TOKEN` | | *(unset)* | API token with the `Browser Run - Edit` permission (secret) |
 | `RUST_LOG` / `LOG_FORMAT` | | `info` / — | Tracing filter; `LOG_FORMAT=json` for prod |
 
 ## Development
@@ -87,20 +88,24 @@ cards to `target/scorecard-samples/*.html` (open them in a browser, or screensho
 UPDATE_SNAPSHOTS=1 cargo test   # regenerate goldens after an intentional markup change
 ```
 
+To render real cards on Cloudflare (Latin, CJK and Cyrillic names), add the two
+`CLOUDFLARE_*` variables to `.env`, then review the JPEGs written to
+`target/scorecard-samples/`:
+
+```sh
+cargo test renders_real_cards_on_cloudflare -- --ignored --nocapture
+```
+
 ## Deployment
 
-Two Fly.io apps:
-
-- **`tentrackule`** — the bot (`fly.toml`, 256 MB, persistent volume for the DB).
-- **`tentrackule-renderer`** — Browserless Chromium (`fly.renderer.toml`, ~1 GB,
-  `scale-to-zero`, private network only). Deploy + wiring steps are in
-  [`docs/renderer-deploy.md`](docs/renderer-deploy.md). Point the bot at it with
-  `RENDERER_URL=http://tentrackule-renderer.flycast:3000` and a shared token.
+- **`tentrackule`** — the bot on Fly.io (`fly.toml`, 256 MB, persistent volume for the DB).
+- **Cloudflare Browser Run** — the managed renderer, with nothing to deploy. Setup,
+  limits and failure modes are in [`docs/renderer-deploy.md`](docs/renderer-deploy.md).
 
 ## Docs
 
 - [`docs/html-scorecard-roadmap.md`](docs/html-scorecard-roadmap.md) — design &
   implementation roadmap for the HTML match card.
-- [`docs/renderer-deploy.md`](docs/renderer-deploy.md) — renderer deployment guide.
+- [`docs/renderer-deploy.md`](docs/renderer-deploy.md) — renderer setup guide.
 - [`docs/optimization-roadmap.md`](docs/optimization-roadmap.md) — resource, API
   and infra-cost optimization roadmap.

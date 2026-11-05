@@ -85,15 +85,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let image_gen = Arc::new(
         ImageGenerator::new(
             config.ddragon_version_override.clone(),
-            config.renderer_url.clone(),
-            config.renderer_token.clone(),
+            config.cloudflare_account_id.clone(),
+            config.cloudflare_api_token.clone(),
             Arc::clone(&metrics),
         )
         .await?,
     );
     tracing::info!(
         version = %image_gen.ddragon_version(),
-        renderer = config.renderer_url.is_some(),
+        renderer = image_gen.has_renderer(),
         "🖼️ Image generator initialized"
     );
 

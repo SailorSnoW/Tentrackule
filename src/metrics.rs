@@ -17,6 +17,7 @@ pub struct Metrics {
     poll_cycles: AtomicU64,
     cache_hits: AtomicU64,
     cache_misses: AtomicU64,
+    render_browser_ms: AtomicU64,
     render_latencies_ms: Mutex<Vec<u32>>,
 }
 
@@ -39,6 +40,11 @@ impl Metrics {
 
     pub fn record_cache_miss(&self) {
         self.cache_misses.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn record_render_browser_ms(&self, browser_ms: u64) {
+        self.render_browser_ms
+            .fetch_add(browser_ms, Ordering::Relaxed);
     }
 
     pub fn record_render(&self, latency: Duration) {
@@ -66,6 +72,7 @@ impl Metrics {
         let cycles = self.poll_cycles.swap(0, Ordering::Relaxed);
         let hits = self.cache_hits.swap(0, Ordering::Relaxed);
         let misses = self.cache_misses.swap(0, Ordering::Relaxed);
+        let render_browser_ms = self.render_browser_ms.swap(0, Ordering::Relaxed);
 
         let mut samples = std::mem::take(
             &mut *self
@@ -97,6 +104,7 @@ impl Metrics {
             renders = samples.len(),
             render_p50_ms = percentile(&samples, 50),
             render_p95_ms = percentile(&samples, 95),
+            render_browser_ms,
             rss_mb = resident_set_size_mb().unwrap_or(0),
             "📊 hourly stats"
         );
@@ -165,9 +173,17 @@ mod tests {
         m.record_poll_cycle();
         m.record_cache_hit();
         m.record_cache_miss();
+        m.record_render_browser_ms(1058);
+        m.record_render_browser_ms(425);
+        assert_eq!(
+            m.render_browser_ms
+                .load(std::sync::atomic::Ordering::Relaxed),
+            1483
+        );
 
         m.report();
         use std::sync::atomic::Ordering::Relaxed;
+        assert_eq!(m.render_browser_ms.load(Relaxed), 0);
         assert_eq!(m.riot_api_calls.load(Relaxed), 0);
         assert_eq!(m.poll_cycles.load(Relaxed), 0);
         assert_eq!(m.cache_hits.load(Relaxed), 0);

@@ -52,8 +52,8 @@ pub struct ImageGenerator {
 impl ImageGenerator {
     pub async fn new(
         ddragon_version_override: Option<String>,
-        renderer_url: Option<String>,
-        renderer_token: Option<String>,
+        cloudflare_account_id: Option<String>,
+        cloudflare_api_token: Option<String>,
         metrics: Arc<Metrics>,
     ) -> Result<Self, AppError> {
         let http = Client::builder().user_agent(USER_AGENT).build()?;
@@ -68,7 +68,7 @@ impl ImageGenerator {
             cache,
             ddragon: ArcSwap::from_pointee(ddragon),
             ddragon_version_override,
-            renderer: Renderer::from_config(renderer_url, renderer_token),
+            renderer: Renderer::from_config(cloudflare_account_id, cloudflare_api_token),
             latin_font_css: RwLock::new(None),
             metrics,
         })
@@ -76,6 +76,10 @@ impl ImageGenerator {
 
     pub fn ddragon_version(&self) -> String {
         self.ddragon.load().version().to_string()
+    }
+
+    pub fn has_renderer(&self) -> bool {
+        self.renderer.is_some()
     }
 
     pub async fn run_ddragon_refresh(self: Arc<Self>) {
@@ -116,30 +120,30 @@ impl ImageGenerator {
         ctx: &MatchImageContext<'_>,
     ) -> Result<Vec<u8>, AppError> {
         let ddragon = self.ddragon.load_full();
-        let mut vm = ScorecardVm::from_context(ctx, &ddragon);
-        self.inline_assets(&mut vm).await;
+        self.render_scorecard(ScorecardVm::from_context(ctx, &ddragon))
+            .await
+    }
 
-        let fonts_inlined = if vm.needs_cjk_fonts() {
-            false
-        } else if let Some(css) = self.latin_font_css().await {
-            vm.set_inlined_font_css(css);
-            true
-        } else {
-            false
+    pub(super) async fn render_scorecard(&self, mut vm: ScorecardVm) -> Result<Vec<u8>, AppError> {
+        let Some(renderer) = &self.renderer else {
+            return Err(AppError::ImageGeneration {
+                message: "renderer not configured".to_string(),
+            });
         };
 
-        let html = vm.build_html();
+        self.inline_assets(&mut vm).await;
 
-        match &self.renderer {
-            Some(renderer) => {
-                renderer
-                    .render(&self.http, &self.metrics, &html, fonts_inlined)
-                    .await
+        let fonts_inlined = match self.latin_font_css().await {
+            Some(css) => {
+                vm.set_inlined_font_css(css);
+                true
             }
-            None => Err(AppError::ImageGeneration {
-                message: "renderer not configured".to_string(),
-            }),
-        }
+            None => false,
+        };
+
+        renderer
+            .render(&self.http, &self.metrics, &vm.build_html(), fonts_inlined)
+            .await
     }
 
     async fn inline_assets(&self, vm: &mut ScorecardVm) {

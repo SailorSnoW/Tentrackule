@@ -3,12 +3,14 @@ use std::fmt::{self, Write as _};
 use std::sync::Arc;
 
 use super::ddragon::DdragonData;
+use super::fonts::LATIN_FONT_CSS_URL;
 use super::grade;
 use super::image_gen::MatchImageContext;
 use crate::db::RankInfo;
 use crate::riot::{InfoDto, ParticipantDto, TeamDto};
 
 pub const CARD_WIDTH_PX: u32 = 820;
+pub const FONTS_READY_SELECTOR: &str = "html[data-fonts-ready]";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MatchResult {
@@ -152,12 +154,6 @@ pub struct ScorecardVm {
 impl ScorecardVm {
     pub fn set_inlined_font_css(&mut self, css: Arc<str>) {
         self.inlined_font_css = Some(css);
-    }
-
-    pub fn needs_cjk_fonts(&self) -> bool {
-        contains_hangul(&self.player_name)
-            || contains_han(&self.player_name)
-            || contains_kana(&self.player_name)
     }
 
     fn show_multi_chip(&self) -> bool {
@@ -475,7 +471,7 @@ impl ScorecardVm {
         s.push_str(include_str!("themes/card.css"));
         s.push_str(
             "</style>\n\
-<script>addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='IMG'){t.style.visibility='hidden';}},true);</script>\n\
+<script>addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='IMG'){t.style.visibility='hidden';}},true);addEventListener('load',function(){document.fonts.ready.then(function(){document.documentElement.setAttribute('data-fonts-ready','1');});});</script>\n\
 </head>\n<body>\n",
         );
 
@@ -502,28 +498,9 @@ impl ScorecardVm {
                     "<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n\
 <link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n",
                 );
-                writeln!(
-                    s,
-                    "<link href=\"{}\" rel=\"stylesheet\">",
-                    self.font_css_url()
-                )
+                writeln!(s, "<link href=\"{LATIN_FONT_CSS_URL}\" rel=\"stylesheet\">")
             }
         }
-    }
-
-    fn font_css_url(&self) -> String {
-        let mut families = String::from(
-            "family=Cinzel:wght@600;700\
-             &family=Barlow+Semi+Condensed:wght@400;500;600;700\
-             &family=Noto+Sans+JP:wght@500;700",
-        );
-        if contains_hangul(&self.player_name) {
-            families.push_str("&family=Noto+Sans+KR:wght@500;700");
-        }
-        if contains_han(&self.player_name) {
-            families.push_str("&family=Noto+Sans+SC:wght@500;700");
-        }
-        format!("https://fonts.googleapis.com/css2?{families}&display=swap")
     }
 
     fn write_sidebar(&self, s: &mut String) -> fmt::Result {
@@ -921,31 +898,6 @@ impl fmt::Display for Esc<'_> {
         }
         f.write_str(rest)
     }
-}
-
-fn contains_hangul(s: &str) -> bool {
-    s.chars().any(|c| {
-        matches!(c,
-            '\u{1100}'..='\u{11FF}'
-            | '\u{3130}'..='\u{318F}'
-            | '\u{AC00}'..='\u{D7A3}'
-        )
-    })
-}
-
-fn contains_han(s: &str) -> bool {
-    s.chars()
-        .any(|c| matches!(c, '\u{3400}'..='\u{4DBF}' | '\u{4E00}'..='\u{9FFF}'))
-}
-
-fn contains_kana(s: &str) -> bool {
-    s.chars().any(|c| {
-        matches!(c,
-            '\u{3040}'..='\u{309F}'
-            | '\u{30A0}'..='\u{30FF}'
-            | '\u{FF66}'..='\u{FF9D}'
-        )
-    })
 }
 
 fn item_src(version: &str, id: i32) -> String {

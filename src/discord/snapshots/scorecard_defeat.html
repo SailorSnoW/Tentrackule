@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700&family=Barlow+Semi+Condensed:wght@400;500;600;700&family=Noto+Sans+JP:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@700&family=Barlow+Semi+Condensed:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 body{margin:0;padding:40px;background:#101216;font-family:'Barlow Semi Condensed',system-ui,sans-serif}
 #card-root{display:inline-block}
-.card{width:820px;display:flex;font-family:'Barlow Semi Condensed',sans-serif;color:var(--value);background:var(--card-bg);border:1px solid var(--edge);border-radius:14px;overflow:hidden;box-shadow:0 26px 60px -22px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.05)}
+.card{width:820px;display:flex;font-family:'Barlow Semi Condensed','Noto Sans CJK JP',sans-serif;color:var(--value);background:var(--card-bg);border:1px solid var(--edge);border-radius:14px;overflow:hidden;box-shadow:0 26px 60px -22px rgba(0,0,0,.85),inset 0 1px 0 rgba(255,255,255,.05)}
 .side{position:relative;width:248px;flex:none;overflow:hidden;border-right:1px solid var(--edge)}
 .splash{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 10%}
 .veil{position:absolute;inset:0;background:var(--overlay)}
@@ -18,7 +18,7 @@ body{margin:0;padding:40px;background:#101216;font-family:'Barlow Semi Condensed
 .grade-gem{position:absolute;inset:3px;background:var(--grade-bg);border:2px solid var(--grade-edge);border-radius:11px;transform:rotate(45deg);box-shadow:0 0 16px -3px rgba(120,120,120,.35)}
 .grade-txt{position:relative;font:700 22px/1 Cinzel,serif;color:var(--grade-text)}
 .side-btm{position:absolute;left:0;right:0;bottom:0;padding:0 14px 14px}
-.name{font:700 19px/1.1 'Noto Sans JP','Noto Sans KR','Noto Sans SC','Barlow Semi Condensed',sans-serif;color:var(--value)}
+.name{font:700 19px/1.1 'Barlow Semi Condensed','Noto Sans CJK JP',sans-serif;color:var(--value)}
 .tag{color:var(--value-soft);font-weight:600;font-size:14px}
 .chips{display:flex;gap:6px;margin-top:7px}
 .chip-role{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border:1px solid var(--chip-edge);border-radius:4px;font:700 9px/1.4;letter-spacing:.14em;color:var(--chip-text);text-transform:uppercase}
@@ -100,7 +100,7 @@ body{margin:0;padding:40px;background:#101216;font-family:'Barlow Semi Condensed
 .obj-n{font:700 13px/1;color:var(--value)}
 .obj-lbl{font:600 9px/1;letter-spacing:.04em;color:var(--label);text-transform:uppercase}
 </style>
-<script>addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='IMG'){t.style.visibility='hidden';}},true);</script>
+<script>addEventListener('error',function(e){var t=e.target;if(t&&t.tagName==='IMG'){t.style.visibility='hidden';}},true);addEventListener('load',function(){document.fonts.ready.then(function(){document.documentElement.setAttribute('data-fonts-ready','1');});});</script>
 </head>
 <body>
 <div id="card-root" style="--card-bg:linear-gradient(158deg,#1d0d10,#0c0607);--edge:#6a2b30;--panel-bg:linear-gradient(180deg,#1e0e11,#120709);--panel-edge:#5a2429;--ribbon-bg:linear-gradient(90deg,#8a2a34,#c0424f);--ribbon-edge:#e0526a;--ribbon-text:#ffe4e8;--grade-bg:linear-gradient(150deg,#4a1e22,#1a090b);--grade-edge:#e0526a;--grade-text:#ffe4e8;--accent:#e0526a;--accent-2:#e0526a;--label:#a8737a;--value:#ffe9eb;--value-soft:#e0b4b9;--footer-edge:rgba(224,82,106,.3);--delta:#ff6b7f;--track:#2a1215;--track-opp:#6b4045;--overlay:linear-gradient(180deg,rgba(90,25,32,.4) 0%,rgba(26,8,10,.1) 30%,rgba(18,7,9,.86) 64%,#0c0607 100%);--chip-edge:#8a3d44;--chip-text:#e59aa4;--chip-bg:rgba(20,8,10,.6);--chip-edge-2:#5a2429;--chip-text-2:#e0b4b9;--death:#ff8a99;--slash:#6b3d43;--divider:#5a2429">

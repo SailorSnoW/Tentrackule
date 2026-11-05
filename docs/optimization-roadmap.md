@@ -3,6 +3,8 @@
 > Statut : **en cours** (Phases 1–2 + 3.A/3.B/3.C + **4** + **5** + **6** implémentées — clippy/tests verts ; JPEG à valider visuellement via `/dev_test_alert`, cold starts scale-to-zero à observer après `fly deploy -c fly.renderer.toml`, cadence adaptative + baisse de volume à confirmer en prod via la ligne de stats horaire de la Phase 6 ; auto-résolution DDragon + refresh 24 h à observer sur un vrai changement de patch) · issu de l'audit d'architecture du 2026-07-23.
 > Périmètre : consommation de ressources, volume d'appels API, stratégie de cache, coût infra. Aucun changement fonctionnel visible côté Discord (hors amélioration de justesse en Phase 1 et latence de détection accrue pour les joueurs inactifs en Phase 4, voulue).
 > Dernière mise à jour : 2026-07-24.
+>
+> **Mise à jour du 2026-11-05 :** le renderer a migré sur **Cloudflare Browser Run** (voir [3.D](#3d--migration-vers-cloudflare-browser-run)). Les mentions de Browserless et de Fly pour le renderer sont historiques.
 
 ---
 
@@ -60,13 +62,21 @@ Objectif : sortir du « performance-1x 2 Go allumé 24/7 » (~25–30 $/mois éc
 ### 3.B — Retour au scale-to-zero
 
 - [x] 🟡 **`min_machines_running = 0`** dans `fly.renderer.toml` une fois 3.A livré : la 1ʳᵉ requête réveille la machine (échec toléré si Chrome dépasse le timeout de lancement Browserless de 30 s), la 2ᵉ passe sur un Chrome chaud (1–6 s). Garder `performance-1x` : on ne le paie plus que quelques minutes par jour. *→ `min_machines_running = 0` (commentaires `fly.renderer.toml` + `renderer-deploy.md` réécrits). Flippé **avant** la mesure Phase 6 (choix assumé, gain immédiat ~25–30 $/mois) — nécessite `fly deploy -c fly.renderer.toml` et une fenêtre d'observation des cold starts. Réversible : `min_machines_running = 1` + `fly scale count 1`.*
-- [ ] 🔴 *(fallback si 3.B reste trop aléatoire)* **Orchestration Fly Machines API** : le bot démarre la machine dès qu'un nouveau match est détecté (avant build HTML + inline des assets, ce qui donne à Chrome son temps de warmup) et l'arrête après ~10 min d'idle. Nécessite `FLY_API_TOKEN` + machine ID en secrets.
-- [ ] 🔴 *(alternative exploratoire)* **Chrome persistant sur shared-cpu 1 Go** (~6 $/mois) : le burst CPU est au *lancement* de Chrome, pas au screenshot d'une carte statique de 820 px. À valider selon les options de session/keep-alive du build Browserless utilisé.
+- [ ] 🔴 *(fallback si 3.B reste trop aléatoire)* **Orchestration Fly Machines API** : le bot démarre la machine dès qu'un nouveau match est détecté (avant build HTML + inline des assets, ce qui donne à Chrome son temps de warmup) et l'arrête après ~10 min d'idle. Nécessite `FLY_API_TOKEN` + machine ID en secrets. *→ Obsolète : renderer migré sur Cloudflare (3.D).*
+- [ ] 🔴 *(alternative exploratoire)* **Chrome persistant sur shared-cpu 1 Go** (~6 $/mois) : le burst CPU est au *lancement* de Chrome, pas au screenshot d'une carte statique de 820 px. À valider selon les options de session/keep-alive du build Browserless utilisé. *→ Obsolète : renderer migré sur Cloudflare (3.D).*
 
 ### 3.C — Rendu plus rapide et déterministe
 
 - [x] 🟡 **Inliner les polices en data URI** via l'`ImageCache` (comme les images) au lieu du `<link>` Google Fonts fetché à chaque rendu dans un profil Chromium vierge. Permet `waitUntil:"load"` au lieu de `networkidle0` + `fonts.ready` → ~300–500 ms de moins par rendu, zéro dépendance réseau au moment du screenshot. *Nuance héritée de la roadmap scorecard : les subsets CJK (Noto Sans KR/SC) sont lourds — inline systématique du latin, CJK inliné à la demande (le cache disque absorbe le one-time).* *→ Faces latin/latin-ext de Cinzel+Barlow inlinées **une fois** (invariantes, ~307 Ko réutilisés sur chaque carte), parsées depuis le CSS Google Fonts réel (`font_face_segments`/`extract_css_urls`, test réseau opt-in). `build_html` émet un `<style>` auto-porté → `waitUntil:"load"`. Les noms CJK (`needs_cjk_fonts`) et tout échec d'inline retombent sur le `<link>` + `networkidle0` (comportement inchangé). CJK **pas** inliné (subsets numérotés) : la voie `<link>` reste correcte pour ces noms.*
 - [x] 🟢 **Screenshot JPEG (q≈90) ou WebP** au lieu de PNG — champ `quality` à ajouter à `ScreenshotOptions`. La carte est dominée par le splash photographique : 3–6× plus léger, upload Discord plus rapide. **À valider visuellement sur le texte fin** (snapshots + `dev_test_alert`). *→ `SCREENSHOT_TYPE = "jpeg"` + `SCREENSHOT_QUALITY = Some(90)` (un seul point de bascule, `quality` omis en PNG). Pièce jointe `match_result.jpg` (`ImageGenerator::ATTACHMENT_FILENAME`). ⚠️ Validation visuelle du texte fin encore à faire via `/dev_test_alert`.*
+
+### 3.D — Migration vers Cloudflare Browser Run
+
+- [x] 🟡 **Remplacer Browserless sur Fly par Cloudflare Browser Run** — le renderer Fly restait trop coûteux. POC du 2026-11-05 sur une vraie carte : 325–1058 ms de temps navigateur facturé, soit ~560 cartes/jour sur le plan gratuit au pire temps mesuré. *→ `Renderer` appelle `/browser-run/screenshot` en `Authorization: Bearer`. Config `CLOUDFLARE_ACCOUNT_ID` + `CLOUDFLARE_API_TOKEN`. `fly.renderer.toml` et le service Browserless de `docker-compose.yml` sont retirés.*
+- [x] 🟢 **Attente des polices sans `waitForFunction`** (absent chez Cloudflare) — *→ marqueur `html[data-fonts-ready]` posé après `load` + `document.fonts.ready`, attendu via `waitForSelector`.*
+- [x] 🟢 **Retries adaptés** — le retry de 25 s pour cold start n'a plus lieu d'être. *→ 3 tentatives : `Retry-After` sur 429, 5 s sur 422/5xx/réseau, aucun retry sur quota journalier ou erreur d'auth.*
+- [x] 🟢 **Payload et polices** — *→ `Cinzel` 600 retiré (inutilisé, ~75 Ko de moins par requête, mesurés sur une vraie carte) ; les noms CJK passent par le Noto CJK préinstallé, plus de chargement Google Fonts ni de `networkidle0` pour eux.*
+- [x] 🟢 **Suivi de la consommation** — *→ `render_browser_ms` (`X-Browser-Ms-Used`) dans la ligne de stats horaire.*
 
 **Critère de sortie :** facture renderer ≈ 0 au repos ; aucun match sans carte sur un mois de fonctionnement normal (le retry absorbe les cold starts) ; rendu p50 mesurablement plus court.
 

@@ -571,40 +571,92 @@ fn from_context_aram_hides_matchup_and_role() {
 }
 
 #[test]
-fn font_url_adds_cjk_subsets_on_demand() {
+fn card_names_rely_on_the_preinstalled_cjk_font() {
     let mut vm = sample(MatchResult::Victory);
 
-    vm.player_name = "Faker".into();
-    let latin = vm.font_css_url();
-    assert!(latin.contains("Noto+Sans+JP"));
-    assert!(!latin.contains("Noto+Sans+KR"));
-    assert!(!latin.contains("Noto+Sans+SC"));
-
-    vm.player_name = "페이커".into();
-    assert!(vm.font_css_url().contains("Noto+Sans+KR"));
-
-    vm.player_name = "李相赫".into();
-    assert!(vm.font_css_url().contains("Noto+Sans+SC"));
-
-    assert!(contains_hangul("한글") && !contains_hangul("kana かな"));
-    assert!(contains_han("漢字") && !contains_han("plain"));
+    for name in ["Faker", "れいん", "페이커", "李相赫"] {
+        vm.player_name = name.into();
+        let html = vm.build_html();
+        assert!(html.contains(name), "missing player name {name}");
+        assert!(html.contains("'Noto Sans CJK JP'"));
+        assert!(!html.contains("family=Noto"), "no CJK web font for {name}");
+    }
 }
 
 #[test]
-fn needs_cjk_fonts_gates_the_inlined_path() {
-    let mut vm = sample(MatchResult::Victory);
+fn html_signals_fonts_ready_after_load() {
+    let html = sample(MatchResult::Victory).build_html();
+    assert_eq!(FONTS_READY_SELECTOR, "html[data-fonts-ready]");
+    assert!(html.contains(
+        "addEventListener('load',function(){document.fonts.ready.then(function(){\
+         document.documentElement.setAttribute('data-fonts-ready','1');});});"
+    ));
+}
 
-    vm.player_name = "Faker".into();
-    assert!(!vm.needs_cjk_fonts(), "Latin name should inline fonts");
+#[tokio::test]
+#[ignore = "hits the real Cloudflare Browser Run API (needs CLOUDFLARE_ACCOUNT_ID + CLOUDFLARE_API_TOKEN)"]
+async fn renders_real_cards_on_cloudflare() {
+    dotenvy::dotenv().ok();
+    let account_id = std::env::var("CLOUDFLARE_ACCOUNT_ID").expect("CLOUDFLARE_ACCOUNT_ID");
+    let api_token = std::env::var("CLOUDFLARE_API_TOKEN").expect("CLOUDFLARE_API_TOKEN");
+    let out_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/target/scorecard-samples");
+    std::fs::create_dir_all(out_dir).unwrap();
 
-    vm.player_name = "れいん".into();
-    assert!(vm.needs_cjk_fonts(), "kana must keep the <link> path");
+    let metrics = Arc::new(crate::metrics::Metrics::new());
+    let generator = crate::discord::ImageGenerator::new(
+        Some(DDRAGON_VER.into()),
+        Some(account_id.clone()),
+        Some(api_token.clone()),
+        Arc::clone(&metrics),
+    )
+    .await
+    .expect("image generator");
 
-    vm.player_name = "페이커".into();
-    assert!(vm.needs_cjk_fonts());
+    for (label, player_name) in [
+        ("latin", "Faker"),
+        ("latin_ext", "Żółć Çelik"),
+        ("kana", "れいん"),
+        ("hangul", "페이커"),
+        ("han", "李相赫"),
+        ("cyrillic", "Хайд"),
+    ] {
+        let mut vm = sample(MatchResult::Victory);
+        vm.player_name = player_name.into();
 
-    vm.player_name = "李相赫".into();
-    assert!(vm.needs_cjk_fonts());
+        let started = std::time::Instant::now();
+        let jpeg = generator
+            .render_scorecard(vm)
+            .await
+            .unwrap_or_else(|e| panic!("{label} render failed: {e:?}"));
+
+        assert_eq!(&jpeg[..3], [0xFF, 0xD8, 0xFF], "{label} is not a JPEG");
+        std::fs::write(format!("{out_dir}/cloudflare_{label}.jpg"), &jpeg).unwrap();
+        eprintln!(
+            "{label}: {} KB in {:.1}s",
+            jpeg.len() / 1024,
+            started.elapsed().as_secs_f32()
+        );
+    }
+
+    let renderer =
+        crate::discord::renderer::Renderer::from_config(Some(account_id), Some(api_token))
+            .expect("renderer");
+    let started = std::time::Instant::now();
+    let jpeg = renderer
+        .render(
+            &reqwest::Client::new(),
+            &metrics,
+            &sample(MatchResult::Defeat).build_html(),
+            false,
+        )
+        .await
+        .expect("font <link> fallback render failed");
+    std::fs::write(format!("{out_dir}/cloudflare_link_fallback.jpg"), &jpeg).unwrap();
+    eprintln!(
+        "link_fallback: {} KB in {:.1}s",
+        jpeg.len() / 1024,
+        started.elapsed().as_secs_f32()
+    );
 }
 
 #[test]

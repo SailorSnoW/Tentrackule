@@ -16,9 +16,9 @@ primary_region = 'cdg'
   LOG_FORMAT = 'json'
   POLLING_INTERVAL_SECS = '60'
   RUST_LOG = 'info,tentrackule=debug'
-  # Private renderer app (Browserless). RENDERER_TOKEN is a secret:
-  #   fly secrets set RENDERER_TOKEN=<same token as the renderer's TOKEN>
-  RENDERER_URL = 'http://tentrackule-renderer.flycast:3000'
+  # Cards are rendered by Cloudflare Browser Run. Both values are secrets:
+  #   fly secrets set CLOUDFLARE_ACCOUNT_ID=<id> CLOUDFLARE_API_TOKEN=<token>
+  # See docs/renderer-deploy.md.
 
 [[mounts]]
   source = 'tentrackule_data'
