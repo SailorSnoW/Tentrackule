@@ -109,6 +109,20 @@ async fn handle_error(error: poise::FrameworkError<'_, Data, AppError>) {
                     .await;
             }
         }
+        poise::FrameworkError::CooldownHit {
+            remaining_cooldown,
+            ctx,
+            ..
+        } => {
+            let wait_s = remaining_cooldown.as_secs_f64().ceil() as u64;
+            let _ = ctx
+                .send(
+                    poise::CreateReply::default()
+                        .content(format!("Slow down: try again in {}s.", wait_s.max(1)))
+                        .ephemeral(true),
+                )
+                .await;
+        }
         poise::FrameworkError::NotAnOwner { ctx, .. } => {
             warn!(
                 user_id = %ctx.author().id,

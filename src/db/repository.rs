@@ -300,6 +300,15 @@ impl Repository {
         Ok(guilds)
     }
 
+    pub async fn count_guild_players(&self, guild_id: u64) -> Result<i64, AppError> {
+        let count =
+            sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM guild_players WHERE guild_id = ?")
+                .bind(guild_id as i64)
+                .fetch_one(&self.pool)
+                .await?;
+        Ok(count)
+    }
+
     pub async fn is_player_tracked_in_guild(
         &self,
         guild_id: u64,
@@ -394,6 +403,24 @@ mod tests {
                 .len(),
             1
         );
+    }
+
+    #[tokio::test]
+    async fn counts_players_per_guild() {
+        let repo = memory_repo().await;
+        assert_eq!(repo.count_guild_players(1).await.unwrap(), 0);
+
+        for (i, puuid) in ["p-a", "p-b", "p-c"].into_iter().enumerate() {
+            let player = repo
+                .get_or_create_player(puuid, "Name", "TAG", "euw1", true)
+                .await
+                .unwrap();
+            let guild = if i < 2 { 1 } else { 2 };
+            repo.add_player_to_guild(guild, player.id, 7).await.unwrap();
+        }
+
+        assert_eq!(repo.count_guild_players(1).await.unwrap(), 2);
+        assert_eq!(repo.count_guild_players(2).await.unwrap(), 1);
     }
 
     #[tokio::test]

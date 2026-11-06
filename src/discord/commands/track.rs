@@ -5,7 +5,9 @@ use crate::discord::bot::Context;
 use crate::error::AppError;
 use crate::riot::Platform;
 
-#[poise::command(slash_command, guild_only)]
+const MAX_TRACKED_PER_GUILD: i64 = 25;
+
+#[poise::command(slash_command, guild_only, user_cooldown = 5)]
 #[instrument(
     skip(ctx),
     fields(
@@ -27,6 +29,17 @@ pub async fn track(
     let user_id = ctx.author().id;
 
     tracing::Span::current().record("guild_id", guild_id.get());
+
+    let tracked = ctx.data().db.count_guild_players(guild_id.get()).await?;
+    if tracked >= MAX_TRACKED_PER_GUILD {
+        warn!(tracked, "Guild tracking limit reached");
+        ctx.say(format!(
+            "This server already tracks {tracked} players (limit: {MAX_TRACKED_PER_GUILD}). \
+             Use `/untrack` to free a slot."
+        ))
+        .await?;
+        return Ok(());
+    }
 
     let account_route = region.to_region();
 
