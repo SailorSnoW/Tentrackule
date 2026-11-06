@@ -68,7 +68,7 @@ async fn handle_error(error: poise::FrameworkError<'_, Data, AppError>) {
                 user_id = %ctx.author().id,
                 "🎮 ❌ Command execution failed"
             );
-            let _ = ctx.say(format!("Error: {}", error)).await;
+            let _ = ctx.say(user_message(&error)).await;
         }
         poise::FrameworkError::ArgumentParse { error, ctx, .. } => {
             warn!(
@@ -136,5 +136,65 @@ async fn handle_error(error: poise::FrameworkError<'_, Data, AppError>) {
         other => {
             error!(error = ?other, "🎮 ❌ Unhandled framework error");
         }
+    }
+}
+
+fn user_message(error: &AppError) -> String {
+    match error {
+        AppError::PlayerNotFound { .. }
+        | AppError::PlayerNotTracked
+        | AppError::InvalidRegion(_) => {
+            format!("Error: {error}")
+        }
+        AppError::RiotApi { status: 429, .. } => {
+            "The Riot API is busy right now. Please try again in a minute.".to_string()
+        }
+        _ => "Something went wrong. Please try again later.".to_string(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::user_message;
+    use crate::error::AppError;
+
+    #[test]
+    fn expected_errors_are_shown_verbatim() {
+        let not_found = AppError::PlayerNotFound {
+            game_name: "Foo".into(),
+            tag_line: "EUW".into(),
+        };
+        assert_eq!(user_message(&not_found), "Error: Player not found: Foo#EUW");
+        assert_eq!(
+            user_message(&AppError::PlayerNotTracked),
+            "Error: Player not tracked in this server"
+        );
+    }
+
+    #[test]
+    fn internal_details_are_not_echoed() {
+        let forbidden = AppError::RiotApi {
+            status: 403,
+            message: r#"{"status":{"message":"Forbidden","status_code":403}}"#.into(),
+        };
+        let shown = user_message(&forbidden);
+        assert!(!shown.contains("403") && !shown.contains("Forbidden"));
+
+        let db = AppError::Database(sqlx::Error::PoolTimedOut);
+        assert!(!user_message(&db).contains("pool"));
+
+        let render = AppError::ImageGeneration {
+            message: "renderer returned 401".into(),
+        };
+        assert!(!user_message(&render).contains("401"));
+    }
+
+    #[test]
+    fn rate_limits_get_a_retry_hint() {
+        let limited = AppError::RiotApi {
+            status: 429,
+            message: "Rate limit exceeded".into(),
+        };
+        assert!(user_message(&limited).contains("try again"));
     }
 }
