@@ -54,6 +54,7 @@ impl Repository {
         game_name: &str,
         tag_line: &str,
         region: &str,
+        region_from_riot: bool,
     ) -> Result<Player, AppError> {
         let player = sqlx::query_as::<_, Player>(concat!(
             "INSERT INTO players (puuid, game_name, tag_line, region)
@@ -61,7 +62,7 @@ impl Repository {
              ON CONFLICT(puuid) DO UPDATE SET
                  game_name = excluded.game_name,
                  tag_line = excluded.tag_line,
-                 region = excluded.region
+                 region = CASE WHEN ? THEN excluded.region ELSE players.region END
              RETURNING ",
             player_columns!("")
         ))
@@ -69,6 +70,7 @@ impl Repository {
         .bind(game_name)
         .bind(tag_line)
         .bind(region)
+        .bind(region_from_riot)
         .fetch_one(&self.pool)
         .await?;
         Ok(player)
@@ -335,7 +337,7 @@ mod tests {
         let repo = memory_repo().await;
 
         let player = repo
-            .get_or_create_player("puuid-1", "Alice", "EUW", "EUW1")
+            .get_or_create_player("puuid-1", "Alice", "EUW", "EUW1", true)
             .await
             .unwrap();
         repo.set_guild_alert_channel(1, 100).await.unwrap();
@@ -372,7 +374,7 @@ mod tests {
     async fn only_alert_enabled_guilds_yield_tracked_players() {
         let repo = memory_repo().await;
         let player = repo
-            .get_or_create_player("puuid-2", "Bob", "NA", "NA1")
+            .get_or_create_player("puuid-2", "Bob", "NA", "NA1", true)
             .await
             .unwrap();
         repo.add_player_to_guild(2, player.id, 7).await.unwrap();
@@ -391,6 +393,41 @@ mod tests {
                 .unwrap()
                 .len(),
             1
+        );
+    }
+
+    #[tokio::test]
+    async fn only_riot_resolved_regions_overwrite_a_stored_player() {
+        let repo = memory_repo().await;
+        let player = repo
+            .get_or_create_player("puuid-3", "Carol", "EUW", "euw1", true)
+            .await
+            .unwrap();
+        assert_eq!(player.region, "euw1");
+
+        let hinted = repo
+            .get_or_create_player("puuid-3", "Carol", "EUW", "na1", false)
+            .await
+            .unwrap();
+        assert_eq!(hinted.id, player.id);
+        assert_eq!(
+            hinted.region, "euw1",
+            "a user-supplied region must not overwrite the stored one"
+        );
+
+        let resolved = repo
+            .get_or_create_player("puuid-3", "Carol", "EUW", "eun1", true)
+            .await
+            .unwrap();
+        assert_eq!(resolved.region, "eun1");
+
+        let fresh = repo
+            .get_or_create_player("puuid-4", "Dave", "NA", "na1", false)
+            .await
+            .unwrap();
+        assert_eq!(
+            fresh.region, "na1",
+            "a new player falls back to the requested region"
         );
     }
 }

@@ -9,6 +9,11 @@ pub struct AccountDto {
 }
 
 #[derive(Debug, Clone, Deserialize)]
+pub struct AccountRegionDto {
+    pub region: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LeagueEntryDto {
     pub queue_type: String,

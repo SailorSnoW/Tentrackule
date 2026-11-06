@@ -1,6 +1,6 @@
 use super::client::RiotClient;
 use super::region::{Platform, Region};
-use super::types::{AccountDto, ChampionMasteryDto, LeagueEntryDto, MatchDto};
+use super::types::{AccountDto, AccountRegionDto, ChampionMasteryDto, LeagueEntryDto, MatchDto};
 use crate::error::AppError;
 
 impl RiotClient {
@@ -27,6 +27,21 @@ impl RiotClient {
                 e
             }
         })
+    }
+
+    pub async fn get_active_platform(
+        &self,
+        region: Region,
+        puuid: &str,
+    ) -> Result<Platform, AppError> {
+        let url = format!(
+            "{}/riot/account/v1/region/by-game/lol/by-puuid/{}",
+            region.base_url(),
+            puuid
+        );
+
+        let dto: AccountRegionDto = self.get(&url).await?;
+        dto.region.parse()
     }
 
     pub async fn get_league_entries_by_puuid(

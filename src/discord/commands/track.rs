@@ -28,26 +28,52 @@ pub async fn track(
 
     tracing::Span::current().record("guild_id", guild_id.get());
 
-    let platform = region;
-    let riot_region = platform.to_region();
+    let account_route = region.to_region();
 
     ctx.defer().await?;
 
     let account = ctx
         .data()
         .riot
-        .get_account_by_riot_id(riot_region, &game_name, &tag_line)
+        .get_account_by_riot_id(account_route, &game_name, &tag_line)
         .await?;
 
     let puuid = &account.puuid;
     let actual_game_name = account.game_name.as_deref().unwrap_or(&game_name);
     let actual_tag_line = account.tag_line.as_deref().unwrap_or(&tag_line);
 
+    let (resolved, region_from_riot) = match ctx
+        .data()
+        .riot
+        .get_active_platform(account_route, puuid)
+        .await
+    {
+        Ok(active) => {
+            if active != region {
+                info!(requested = %region, active = %active, "Requested region overridden by the player's active one");
+            }
+            (active, true)
+        }
+        Err(e) => {
+            warn!(error = %e, "Could not resolve the player's active region; using the requested one");
+            (region, false)
+        }
+    };
+
     let player = ctx
         .data()
         .db
-        .get_or_create_player(puuid, actual_game_name, actual_tag_line, platform.as_str())
+        .get_or_create_player(
+            puuid,
+            actual_game_name,
+            actual_tag_line,
+            resolved.as_str(),
+            region_from_riot,
+        )
         .await?;
+
+    let platform: Platform = player.region.parse()?;
+    let riot_region = platform.to_region();
 
     if player.last_match_id.is_none() {
         match ctx.data().riot.get_match_ids(riot_region, puuid, 1).await {
